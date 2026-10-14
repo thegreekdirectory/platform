@@ -38,7 +38,7 @@ or distribution of this code can result in legal action to the fullest extent pe
 // that's a real, meaningful difference from the old file's
 // params.slug-as-array handling, not just a rename.
 
-import { CHICAGOLAND_SUBURBS } from './_chicagoland-suburbs.js';
+import { CHICAGOLAND_SUBURBS } from '/js/chicagoland-suburbs.js';
 import { renderRegionPage } from './_render-region-page.js';
 
 const REGION_SLUGS = {

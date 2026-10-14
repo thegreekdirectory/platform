@@ -1558,6 +1558,11 @@ function fillEditForm(listing) {
                         <textarea id="editCoordinates" rows="4" class="w-full px-4 py-2 border rounded-lg font-mono text-sm" placeholder='{&quot;lat&quot;:43.83850,&quot;lng&quot;:-87.92659101}'>${escapeHtml(coordinatesToRawText(listing?.coordinates))}</textarea>
                         <p class="text-xs text-gray-500 mt-1">Raw Supabase jsonb value. Saved exactly as entered; invalid JSON is left for Supabase to reject.</p>
                     </div>
+                    <div class="md:col-span-2">
+                        <label class="block text-sm font-medium mb-2" for="editGooglePlaceId">Google Place ID</label>
+                        <input type="text" id="editGooglePlaceId" value="${escapeHtml(listing?.google_place_id || '').replace(/"/g, '&quot;')}" class="w-full px-4 py-2 border rounded-lg" placeholder="e.g. ChIJ...">
+                        <p class="text-xs text-gray-500 mt-1">Optional. The Google Maps Place ID for this location.</p>
+                    </div>
                 </div>
             </div>
 
@@ -2705,6 +2710,7 @@ const listingData = {
             country: document.getElementById('editCountry').value || 'USA',
             timezone,
             coordinates: coordinates,
+            google_place_id: document.getElementById('editGooglePlaceId').value.trim() || null,
             phone: phone,
             email: document.getElementById('editEmail').value.trim() || null,
             website: document.getElementById('editWebsite').value.trim() || null,

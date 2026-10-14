@@ -325,7 +325,7 @@ async function handleAdminLogin() {
     clearAuthMessage();
     
     try {
-        const response = await fetch('https://api.github.com/repos/thegreekdirectory/listings', {
+        const response = await fetch('https://api.github.com/repos/thegreekdirectory/platform', {
             headers: {
                 'Authorization': `token ${token}`,
                 'Accept': 'application/vnd.github.v3+json'
@@ -4628,7 +4628,7 @@ async function prepareListingPageGeneration(listingId, options = {}) {
     if (preFetchedTemplate != null) {
         template = preFetchedTemplate;
     } else {
-        const templateResponse = await fetch('https://raw.githubusercontent.com/thegreekdirectory/listings/main/listing-template.html');
+        const templateResponse = await fetch('https://raw.githubusercontent.com/thegreekdirectory/platform/main/listing-template.html');
         if (!templateResponse.ok) {
             throw new Error('Failed to fetch template');
         }
@@ -4885,7 +4885,7 @@ async function saveToGitHub(filePath, content, businessName) {
         let currentSha = null;
         try {
             const fileInfoResponse = await fetch(
-                `https://api.github.com/repos/thegreekdirectory/listings/contents/${filePath}`,
+                `https://api.github.com/repos/thegreekdirectory/platform/contents/${filePath}`,
                 {
                     headers: {
                         'Authorization': `token ${adminGithubToken}`,
@@ -4920,7 +4920,7 @@ async function saveToGitHub(filePath, content, businessName) {
         // Copyright (C) The Greek Directory, 2025-present. All rights reserved.
         
         const uploadResponse = await fetch(
-            `https://api.github.com/repos/thegreekdirectory/listings/contents/${filePath}`,
+            `https://api.github.com/repos/thegreekdirectory/platform/contents/${filePath}`,
             {
                 method: 'PUT',
                 headers: {
@@ -4956,7 +4956,7 @@ async function saveMultipleFilesToGitHub(files, commitMessage) {
     };
     
     const branchResponse = await fetch(
-        'https://api.github.com/repos/thegreekdirectory/listings/git/ref/heads/main',
+        'https://api.github.com/repos/thegreekdirectory/platform/git/ref/heads/main',
         { headers }
     );
     
@@ -4969,7 +4969,7 @@ async function saveMultipleFilesToGitHub(files, commitMessage) {
     const latestCommitSha = branchData.object.sha;
     
     const commitResponse = await fetch(
-        `https://api.github.com/repos/thegreekdirectory/listings/git/commits/${latestCommitSha}`,
+        `https://api.github.com/repos/thegreekdirectory/platform/git/commits/${latestCommitSha}`,
         { headers }
     );
     
@@ -4989,7 +4989,7 @@ async function saveMultipleFilesToGitHub(files, commitMessage) {
     }));
     
     const treeResponse = await fetch(
-        'https://api.github.com/repos/thegreekdirectory/listings/git/trees',
+        'https://api.github.com/repos/thegreekdirectory/platform/git/trees',
         {
             method: 'POST',
             headers,
@@ -5008,7 +5008,7 @@ async function saveMultipleFilesToGitHub(files, commitMessage) {
     const treeData = await treeResponse.json();
     
     const createCommitResponse = await fetch(
-        'https://api.github.com/repos/thegreekdirectory/listings/git/commits',
+        'https://api.github.com/repos/thegreekdirectory/platform/git/commits',
         {
             method: 'POST',
             headers,
@@ -5032,7 +5032,7 @@ async function saveMultipleFilesToGitHub(files, commitMessage) {
     const newCommit = await createCommitResponse.json();
     
     const updateRefResponse = await fetch(
-        'https://api.github.com/repos/thegreekdirectory/listings/git/refs/heads/main',
+        'https://api.github.com/repos/thegreekdirectory/platform/git/refs/heads/main',
         {
             method: 'PATCH',
             headers,
@@ -5068,7 +5068,7 @@ window.generateAllListingPages = async function() {
     console.log(`🔨 Generating ${visibleListings.length} listing pages...`);
     
     // Fetch the template once for the whole batch instead of once per listing
-    const templateResponse = await fetch('https://raw.githubusercontent.com/thegreekdirectory/listings/main/listing-template.html');
+    const templateResponse = await fetch('https://raw.githubusercontent.com/thegreekdirectory/platform/main/listing-template.html');
     if (!templateResponse.ok) {
         alert('Failed to fetch listing template. Generation aborted.');
         return;

@@ -1181,7 +1181,7 @@ a.hover-bounce:hover, button.hover-bounce:hover { transform: scale(1.03); }
 .event-hero-banner {
     position: relative;
     height: 180px;
-    background-image: linear-gradient(rgba(4,80,147,0.55), rgba(4,80,147,0.75)), url('https://raw.githubusercontent.com/thegreekdirectory/listings/refs/heads/codex/audit-and-optimize-listings-directory-for-seo/images/chicago.jpeg');
+    background-image: linear-gradient(rgba(4,80,147,0.55), rgba(4,80,147,0.75)), url('https://raw.githubusercontent.com/thegreekdirectory/platform/refs/heads/main/images/chicago.jpeg');
     background-size: cover;
     background-position: center 65%;
 }

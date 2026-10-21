@@ -4634,7 +4634,7 @@ async function prepareListingPageGeneration(listingId, options = {}) {
     if (preFetchedTemplate != null) {
         template = preFetchedTemplate;
     } else {
-        const templateResponse = await fetch('https://raw.githubusercontent.com/thegreekdirectory/platform/main/listing-template.html');
+        const templateResponse = await fetch('https://raw.githubusercontent.com/thegreekdirectory/platform/main/null-listing-template.html');
         if (!templateResponse.ok) {
             throw new Error('Failed to fetch template');
         }
@@ -5074,7 +5074,7 @@ window.generateAllListingPages = async function() {
     console.log(`🔨 Generating ${visibleListings.length} listing pages...`);
     
     // Fetch the template once for the whole batch instead of once per listing
-    const templateResponse = await fetch('https://raw.githubusercontent.com/thegreekdirectory/platform/main/listing-template.html');
+    const templateResponse = await fetch('https://raw.githubusercontent.com/thegreekdirectory/platform/main/null-listing-template.html');
     if (!templateResponse.ok) {
         alert('Failed to fetch listing template. Generation aborted.');
         return;

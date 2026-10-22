@@ -1,3 +1,4 @@
+/*
 export async function onRequest(context) {
   // Extract env to use env.ASSETS.fetch for internal static files
   const { request, next, env } = context;
@@ -83,3 +84,4 @@ export async function onRequest(context) {
   
   return finalResponse;
 }
+*/

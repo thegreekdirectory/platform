@@ -248,6 +248,20 @@ window.StarredManager = {
         });
     },
 
+    // The starredListings cookie is the primary store of starred listing IDs: the directory page
+    // writes it in every browser and only mirrors it into IndexedDB in PWA mode. Parsed the same
+    // way as getStarredListingIds() in js/listing-page.js.
+    getCookieStarredIds() {
+        try {
+            const cookieEntry = document.cookie.split('; ').find((item) => item.startsWith('starredListings='));
+            if (!cookieEntry) return [];
+            const parsed = JSON.parse(decodeURIComponent(cookieEntry.slice('starredListings='.length)));
+            return Array.isArray(parsed) ? parsed.map(String) : [];
+        } catch (error) {
+            return [];
+        }
+    },
+
     async initializeStarButtons() {
         try {
             await window.PWAStorage.init();
@@ -266,7 +280,11 @@ window.StarredManager = {
                 
                 if (!listingId) continue;
                 
-                const isStarred = await window.PWAStorage.isStarred(String(listingId));
+                // Starred if either store has it. Checking IndexedDB alone removed the class that
+                // js/listing-page.js had just applied from the cookie, so a listing starred from the
+                // directory in a normal browser tab showed as unstarred.
+                const isStarred = (await window.PWAStorage.isStarred(String(listingId))) ||
+                    this.getCookieStarredIds().includes(String(listingId));
                 if (isStarred) {
                     button.classList.add('starred');
                 } else {

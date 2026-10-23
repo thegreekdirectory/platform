@@ -1,4 +1,4 @@
-    function openDirections(event) {
+function openDirections(event) {
         if (event) event.preventDefault();
         const listing = window.currentListingData || {};
         const directionsUrl = (window.TGDDirections && window.TGDDirections.getDirectionsUrl)
@@ -28,16 +28,18 @@
             event.preventDefault();
             event.stopPropagation();
         }
-        const starButton = document.querySelector(`.star-button[data-listing-id="${window.currentListingData}"]`);
+        if (!window.currentListingData) return;
+        const listingId = String(window.currentListingData.id);
+        const starButton = document.querySelector(`.star-button[data-listing-id="${listingId}"]`);
         if (!starButton) return;
 
-        const listingId = String(window.currentListingData.id);
-        const starredIds = getStarredListingIds();
-        const existingIndex = starredIds.indexOf(listingId);
-        const shouldStar = existingIndex === -1;
+        // A listing counts as starred if the cookie OR IndexedDB has it (see the DOMContentLoaded
+        // handler below), so the toggle follows what the button currently shows. Deciding from the
+        // cookie alone re-starred the listing, and never unstarred it, when only IndexedDB held the star.
+        const shouldStar = !starButton.classList.contains('starred');
 
+        const starredIds = getStarredListingIds().filter((id) => id !== listingId);
         if (shouldStar) starredIds.push(listingId);
-        else starredIds.splice(existingIndex, 1);
 
         setStarredListingIds(starredIds);
         starButton.classList.toggle('starred', shouldStar);
@@ -46,22 +48,36 @@
         }));
 
         if (window.PWAStorage) {
-            await window.PWAStorage.init();
-            if (shouldStar) await window.PWAStorage.addStarred(window.currentListingData);
-            else await window.PWAStorage.removeStarred(listingId);
+            try {
+                await window.PWAStorage.init();
+                if (shouldStar) {
+                    // addStarred() uses objectStore.add(), which rejects if the listing is already stored
+                    const alreadyStarred = await window.PWAStorage.isStarred(listingId);
+                    if (!alreadyStarred) await window.PWAStorage.addStarred(window.currentListingData);
+                } else {
+                    await window.PWAStorage.removeStarred(listingId);
+                }
+            } catch (error) {
+                console.error('Error syncing starred listing to PWA storage:', error);
+            }
         }
     }
 
     document.addEventListener('DOMContentLoaded', async () => {
+        if (!window.currentListingData) return;
         const starButton = document.querySelector(`.star-button[data-listing-id="${window.currentListingData.id}"]`);
         if (!starButton) return;
         const listingId = String(window.currentListingData.id);
         const isStarredByCookie = getStarredListingIds().includes(listingId);
         if (isStarredByCookie) starButton.classList.add('starred');
         if (window.PWAStorage) {
-            await window.PWAStorage.init();
-            const isStarred = await window.PWAStorage.isStarred(listingId);
-            if (isStarred) starButton.classList.add('starred');
+            try {
+                await window.PWAStorage.init();
+                const isStarred = await window.PWAStorage.isStarred(listingId);
+                if (isStarred) starButton.classList.add('starred');
+            } catch (error) {
+                console.error('Error reading starred listing from PWA storage:', error);
+            }
         }
     });
 
@@ -546,4 +562,3 @@ function openGallery(index = 0) {
         
         initializeListingHoursStatus();
         setInterval(initializeListingHoursStatus, 60000);
-        

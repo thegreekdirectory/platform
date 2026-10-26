@@ -10,7 +10,7 @@ or distribution of this code can result in legal action to the fullest extent pe
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-    <meta name="version" content"24">
+    <meta name="version" content"25">
     <meta name="apple-mobile-web-app-capable" content="yes">
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 
@@ -127,7 +127,7 @@ or distribution of this code can result in legal action to the fullest extent pe
                     "@type": "AdministrativeArea",
                     "name": "IL"
                 },
-                "openingHoursSpecification": [{"@type":"OpeningHoursSpecification","dayOfWeek":"Friday","opens":"09:00","closes":"18:00"},{"@type":"OpeningHoursSpecification","dayOfWeek":"Monday","opens":"00:00","closes":"23:59"},{"@type":"OpeningHoursSpecification","dayOfWeek":"Sunday","opens":"11:00","closes":"20:00"},{"@type":"OpeningHoursSpecification","dayOfWeek":"Tuesday","opens":"09:00","closes":"10:00"},{"@type":"OpeningHoursSpecification","dayOfWeek":"Saturday","opens":"00:00","closes":"23:59"}],
+                "openingHoursSpecification": [{"@type":"OpeningHoursSpecification","dayOfWeek":"Friday","opens":"09:00","closes":"18:00"},{"@type":"OpeningHoursSpecification","dayOfWeek":"Monday","opens":"00:00","closes":"23:59"},{"@type":"OpeningHoursSpecification","dayOfWeek":"Sunday","opens":"11:00","closes":"20:00"},{"@type":"OpeningHoursSpecification","dayOfWeek":"Tuesday","opens":"09:00","closes":"10:00"},{"@type":"OpeningHoursSpecification","dayOfWeek":"Saturday","opens":"00:00","closes":"23:59"},{"@type":"OpeningHoursSpecification","dayOfWeek":"Wednesday","opens":"15:00","closes":"20:00"}],
                 "sameAs": ["https://facebook.com/example-listing","https://instagram.com/example-listing","https://twitter.com/example-listing","https://www.linkedin.com/company/example-listing","https://tgd.gr/example#social1","https://tgd.gr/example#social2","https://tgd.gr/example#social3","https://tgd.gr/example#yelp"],
                 
                 "mainEntityOfPage": {"@id": "https://thegreekdirectory.org/listing/examplex#page"},
@@ -160,8 +160,8 @@ or distribution of this code can result in legal action to the fullest extent pe
                     {
                         "@type": "ListItem",
                         "position": 2,
-                        "name": "Main Category",
-                        "item": "https://thegreekdirectory.org/main-category"
+                        "name": "Automotive &amp; Transportation",
+                        "item": "https://thegreekdirectory.org/automotive-transportation"
                     },
                     {
                         "@type": "ListItem",
@@ -280,7 +280,7 @@ or distribution of this code can result in legal action to the fullest extent pe
                         <div class="flex-1">
                             <div class="flex items-center gap-2 mb-4 flex-wrap">
                                 <span class="text-sm font-semibold px-3 py-1 rounded-full text-white category-pill" style="background-color:#045093;" onclick="toggleSubcategories()">
-                                    Main Category
+                                    Automotive &amp; Transportation
                                 </span>
                                 <div class="subcategories-display" id="subcategoriesDisplay">
                                     <span class="subcategory-tag">Primary Subcategory</span><span class="subcategory-tag">Other Subcategory 1</span><span class="subcategory-tag">Other Subcategory 2</span>
@@ -445,10 +445,10 @@ or distribution of this code can result in legal action to the fullest extent pe
                 <h3 class="font-semibold text-gray-900 mb-2">Example Hours
                     <span class="hours-tooltip-wrap" id="hoursTooltipButton" aria-label="Hours update information">
                         <svg class="hours-tooltip-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="9" stroke-width="2"></circle><path d="M12 10v6" stroke-width="2" stroke-linecap="round"></path><circle cx="12" cy="7" r="1.2" fill="currentColor" stroke="none"></circle></svg>
-                        <span class="hours-tooltip">Last updated at 2026-09-20 04:15 UTC by TGD Admin.</span>
+                        <span class="hours-tooltip">Last updated at 2026-10-26 03:39 UTC by TGD Admin.</span>
                     </span>
                 </h3>
-                <div class="space-y-1"><div class="flex justify-between text-sm" data-hours-day="monday"><span class="font-medium hours-day-label">Monday:</span><span class="hours-day-value">Open All Day</span></div><div class="flex justify-between text-sm" data-hours-day="tuesday"><span class="font-medium hours-day-label">Tuesday:</span><span class="hours-day-value">9:00 AM - 10:00 AM</span></div><div class="flex justify-between text-sm" data-hours-day="wednesday"><span class="font-medium hours-day-label">Wednesday:</span><span class="hours-day-value">Closed</span></div><div class="flex justify-between text-sm" data-hours-day="thursday"><span class="font-medium hours-day-label">Thursday:</span><span class="hours-day-value">Closed</span></div><div class="flex justify-between text-sm" data-hours-day="friday"><span class="font-medium hours-day-label">Friday:</span><span class="hours-day-value">9:00 AM - 6:00 PM</span></div><div class="flex justify-between text-sm" data-hours-day="saturday"><span class="font-medium hours-day-label">Saturday:</span><span class="hours-day-value">Open All Day</span></div><div class="flex justify-between text-sm" data-hours-day="sunday"><span class="font-medium hours-day-label">Sunday:</span><span class="hours-day-value">11:00 AM - 8:00 PM</span></div></div>
+                <div class="space-y-1"><div class="flex justify-between text-sm" data-hours-day="monday"><span class="font-medium hours-day-label">Monday:</span><span class="hours-day-value">Open All Day</span></div><div class="flex justify-between text-sm" data-hours-day="tuesday"><span class="font-medium hours-day-label">Tuesday:</span><span class="hours-day-value">9:00 AM - 10:00 AM</span></div><div class="flex justify-between text-sm" data-hours-day="wednesday"><span class="font-medium hours-day-label">Wednesday:</span><span class="hours-day-value">3:00 PM - 8:00 PM</span></div><div class="flex justify-between text-sm" data-hours-day="thursday"><span class="font-medium hours-day-label">Thursday:</span><span class="hours-day-value">Closed</span></div><div class="flex justify-between text-sm" data-hours-day="friday"><span class="font-medium hours-day-label">Friday:</span><span class="hours-day-value">9:00 AM - 6:00 PM</span></div><div class="flex justify-between text-sm" data-hours-day="saturday"><span class="font-medium hours-day-label">Saturday:</span><span class="hours-day-value">Open All Day</span></div><div class="flex justify-between text-sm" data-hours-day="sunday"><span class="font-medium hours-day-label">Sunday:</span><span class="hours-day-value">11:00 AM - 8:00 PM</span></div></div>
                 <div id="openStatusText" class="mt-2 text-sm"></div>
                 <div class="hours-disclaimer">Example custom hours disclaimer.</div>
             </div>
@@ -735,7 +735,7 @@ or distribution of this code can result in legal action to the fullest extent pe
         business_name_display: `Example Listing`,
         tagline: "Lorem ipsum dolor sit amet elit. This is not a real listing.",
         description: "<p>Lorem ipsum dolor sit amet consectetur adipiscing elit. Integer volutpat egestas scelerisque. Aenean et sem quis est consequat pulvinar ac nec erat. In hac habitasse platea dictumst. Nulla blandit justo erat, eu maximus justo convallis in. Aliquam consequat lectus a ante venenatis commodo. Proin mattis odio mi, vel fermentum odio sagittis vel. Nam quis porta purus, quis ultrices velit. Nulla nec felis at lacus porttitor pretium. Pellentesque blandit euismod quam id bibendum. Orci varius natoque penatibus et magnis dis parturient montes, nascetur ridiculus mus. Quisque sit amet ullamcorper libero.</p><p><br></p><p>Pellentesque molestie est id diam ullamcorper, et luctus metus scelerisque. Phasellus nulla arcu, condimentum non lorem maximus, condimentum tincidunt nibh. Nulla maximus sapien eu lectus sodales dignissim. Sed accumsan augue in malesuada pharetra. Quisque maximus, justo vitae vulputate ultricies, ante arcu porttitor lectus, at fringilla velit enim nec sem. Proin ut tristique massa. Vestibulum ante ipsum primis in faucibus orci luctus et ultrices posuere cubilia curae; Etiam aliquam lorem vitae nunc eleifend condimentum.</p><p><br></p><p>Fusce ipsum ligula, fringilla eu molestie non, malesuada sed lectus. Suspendisse placerat rutrum ipsum, sed dignissim ligula. Vestibulum vitae risus vulputate, pharetra nibh at, luctus est. Integer placerat tempor turpis at viverra. Integer dignissim posuere eleifend. Duis vel sapien sodales, hendrerit ipsum ut, maximus massa. Cras iaculis convallis nisi, nec facilisis ligula consequat quis. Sed eu dignissim lacus ut mattis nulla. Curabitur ultrices a dui in dictum. Praesent neque justo, hendrerit id massa maximus, sagittis cursus ex. Maecenas auctor maximus odio ac efficitur velit aliquam ac. Integer a tempor libero. Phasellus sit amet blandit neque. Maecenas egestas libero facilisis condimentum imperdiet.</p>",
-        category: 'Main Category',
+        category: 'Automotive &amp; Transportation',
         city: "Chicago",
         state: "IL",
         address: "505 N Lake Shore Dr",
@@ -745,10 +745,10 @@ or distribution of this code can result in legal action to the fullest extent pe
         logo: 'https://thegreekdirectory.pages.dev/assets/images/letter-icon/e.svg?access=granted',
         photos: ["https://worldbusinesschicago.com/app/uploads/2024/08/chicago-sunset-scaled.jpg","https://worldbusinesschicago.com/app/uploads/2024/08/chicago-sunset-scaled.jpg","https://worldbusinesschicago.com/app/uploads/2024/08/chicago-sunset-scaled.jpg"],
         slug: 'examplex',
-        version: '24',
+        version: '25',
         url: "https://thegreekdirectory.org/listing/examplex",
         total_photos: 3,
-        hours: {"friday":"09:00-18:00","monday":"00:00-23:59","sunday":"11:00-20:00","tuesday":"09:00-10:00","saturday":"00:00-23:59","thursday":"Closed","wednesday":"Closed"},
+        hours: {"friday":"09:00-18:00","monday":"00:00-23:59","sunday":"11:00-20:00","tuesday":"09:00-10:00","saturday":"00:00-23:59","thursday":"Closed","wednesday":"15:00-20:00"},
         timezone: 'America/Chicago' || 'America/Chicago',
         coordinates: '41.8915272,-87.6132485',
         full_address: '505 N Lake Shore Dr, Chicago, IL, 60601',

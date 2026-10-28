@@ -649,23 +649,105 @@ function formatPhoneNumber(phone) {
     return String(phone);
 }
 
-// Ported from admin.js toDisplayHourLabel — converts a stored "HH:MM-HH:MM"
-// hours value into a display string like "9:00 AM - 5:00 PM".
-function toDisplayHourLabel(hoursValue) {
-    const raw = String(hoursValue || '').trim();
-    if (!raw || /^closed$/i.test(raw) || /24/.test(raw.toLowerCase())) return raw || 'Closed';
-    if (raw === '00:00-23:59' || raw === '00:00 - 23:59') return 'Open All Day';
-    const match = raw.match(/^(\d{2}):(\d{2})\s*-\s*(\d{2}):(\d{2})$/);
-    if (!match) return raw;
+// ---------------------------------------------------------------------------
+// Hours — ported from js/listing-hours.js (a Pages Function can't load that browser
+// script). Each day is { status: 'open' | 'closed' | '24_hours' | 'unknown',
+// ranges: [{ open: 'HH:MM', close: 'HH:MM' }] }. Rows written before that model
+// stored one string per day ("09:00-17:00", "Closed", ...), which normalizeHoursDay()
+// still understands so this page works before and after the data migration.
+// ---------------------------------------------------------------------------
 
-    const toTwelveHour = (hourPart, minutePart) => {
-        const hourNum = parseInt(hourPart, 10);
-        const period = hourNum >= 12 ? 'PM' : 'AM';
-        const twelveHour = hourNum % 12 === 0 ? 12 : hourNum % 12;
-        return `${twelveHour}:${minutePart} ${period}`;
-    };
+const HOURS_DAY_KEYS = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
-    return `${toTwelveHour(match[1], match[2])} - ${toTwelveHour(match[3], match[4])}`;
+function hoursPad2(n) { return String(n).padStart(2, '0'); }
+function hoursMinutesToHHMM(minutes) { return `${hoursPad2(Math.floor(minutes / 60))}:${hoursPad2(minutes % 60)}`; }
+
+function parseHoursTimeToken(token) {
+    const t = String(token === null || token === undefined ? '' : token).trim().toUpperCase().replace(/\./g, '');
+    const m = t.match(/^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?$/);
+    if (!m) return null;
+    let hour = parseInt(m[1], 10);
+    const minute = m[2] === undefined ? 0 : parseInt(m[2], 10);
+    const meridiem = m[3] || null;
+    if (minute > 59) return null;
+    if (meridiem) {
+        if (hour < 1 || hour > 12) return null;
+        if (meridiem === 'PM' && hour !== 12) hour += 12;
+        if (meridiem === 'AM' && hour === 12) hour = 0;
+    } else {
+        if (m[2] === undefined) return null;
+        if (hour > 23) return null;
+    }
+    return hour * 60 + minute;
+}
+
+function parseHoursRangeText(piece) {
+    const parts = String(piece || '').trim().split(/\s*(?:-|\u2013|\u2014|\bto\b)\s*/i);
+    if (parts.length !== 2) return null;
+    const open = parseHoursTimeToken(parts[0]);
+    const close = parseHoursTimeToken(parts[1]);
+    if (open === null || close === null) return null;
+    return { open: hoursMinutesToHHMM(open), close: hoursMinutesToHHMM(close) };
+}
+
+function normalizeHoursRanges(list) {
+    const sorted = (list || []).slice().sort((a, b) =>
+        (parseHoursTimeToken(a.open) - parseHoursTimeToken(b.open)) || (parseHoursTimeToken(a.close) - parseHoursTimeToken(b.close)));
+    const unique = sorted.filter((r, i) => i === 0 || r.open !== sorted[i - 1].open || r.close !== sorted[i - 1].close);
+    if (!unique.length) return { status: 'unknown', ranges: [] };
+    if (unique.length === 1 && unique[0].open === '00:00' && unique[0].close === '23:59') return { status: '24_hours', ranges: [] };
+    return { status: 'open', ranges: unique };
+}
+
+function parseHoursText(text) {
+    const raw = String(text === null || text === undefined ? '' : text).trim();
+    if (!raw) return { status: 'unknown', ranges: [] };
+    if (/^closed$/i.test(raw)) return { status: 'closed', ranges: [] };
+    if (/24\s*hours?|open\s*24|^(?:open\s+)?all\s*day$/i.test(raw)) return { status: '24_hours', ranges: [] };
+    const ranges = [];
+    for (const piece of raw.split(/\s*(?:,|;|\||\n|&|\band\b)\s*/i).filter(Boolean)) {
+        const range = parseHoursRangeText(piece);
+        if (!range) return null;
+        ranges.push(range);
+    }
+    return normalizeHoursRanges(ranges);
+}
+
+function normalizeHoursDay(value) {
+    if (value === null || value === undefined) return { status: 'unknown', ranges: [] };
+    if (typeof value === 'string') return parseHoursText(value) || { status: 'unknown', ranges: [] };
+    if (typeof value !== 'object' || Array.isArray(value)) return { status: 'unknown', ranges: [] };
+    const status = String(value.status || '').trim().toLowerCase();
+    if (status === 'closed') return { status: 'closed', ranges: [] };
+    if (status === '24_hours') return { status: '24_hours', ranges: [] };
+    const ranges = (Array.isArray(value.ranges) ? value.ranges : []).map((r) => {
+        if (!r || typeof r !== 'object') return null;
+        const open = parseHoursTimeToken(r.open);
+        const close = parseHoursTimeToken(r.close);
+        return open === null || close === null ? null : { open: hoursMinutesToHHMM(open), close: hoursMinutesToHHMM(close) };
+    }).filter(Boolean);
+    return normalizeHoursRanges(ranges);
+}
+
+function hasAnyHours(hours) {
+    if (!hours || typeof hours !== 'object') return false;
+    return HOURS_DAY_KEYS.some((key) => normalizeHoursDay(hours[key]).status !== 'unknown');
+}
+
+function formatHoursTime12(hhmm) {
+    const minutes = parseHoursTimeToken(hhmm);
+    if (minutes === null) return '';
+    const hour24 = Math.floor(minutes / 60);
+    return `${hour24 % 12 || 12}:${hoursPad2(minutes % 60)} ${hour24 >= 12 ? 'PM' : 'AM'}`;
+}
+
+// One entry per set of hours: ["9:00 AM - 10:00 AM", "3:00 PM - 8:00 PM"], ["Closed"],
+// ["Open All Day"], or [] when the day has no hours entered.
+function formatHoursDayLines(value) {
+    const day = normalizeHoursDay(value);
+    if (day.status === 'closed') return ['Closed'];
+    if (day.status === '24_hours') return ['Open All Day'];
+    return day.ranges.map((r) => `${formatHoursTime12(r.open)} - ${formatHoursTime12(r.close)}`);
 }
 
 function pricingToSymbols(value) {
@@ -794,16 +876,17 @@ function buildWebsiteLine(listing) {
 }
 
 function buildHoursSection(listing) {
-    const hasHours = listing.hours && Object.keys(listing.hours).some((day) => listing.hours[day]);
-    if (!hasHours) return '';
+    if (!hasAnyHours(listing.hours)) return '';
 
     const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
     const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
 
     const rows = dayKeys
         .map((key, index) => {
-            const value = listing.hours[key] || 'Closed';
-            return `<div class="hours-row"><span class="hours-day">${days[index]}</span><span class="hours-value">${escapeHtml(toDisplayHourLabel(value))}</span></div>`;
+            // The day appears once; each set of hours gets its own line. Days with no hours read "Closed".
+            const lines = formatHoursDayLines(listing.hours[key]);
+            const hoursText = (lines.length ? lines : ['Closed']).map((line) => escapeHtml(line)).join('<br>');
+            return `<div class="hours-row"><span class="hours-day">${days[index]}</span><span class="hours-value">${hoursText}</span></div>`;
         })
         .join('');
 
@@ -1597,11 +1680,13 @@ const PRINT_STYLES = `<style>
     .hours-row {
         display: flex;
         justify-content: space-between;
+        align-items: flex-start;
+        gap: 12px;
         padding: 2px 0;
     }
 
     .hours-day { font-weight: 600; }
-    .hours-value { color: #374151; }
+    .hours-value { color: #374151; text-align: right; }
 
     .hours-disclaimer {
         margin-top: 8px;

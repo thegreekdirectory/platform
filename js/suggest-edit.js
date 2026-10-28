@@ -194,15 +194,18 @@ function buildHoursRows() {
 function prefillHours(hoursObj) {
   if (!hoursObj) return;
   const box = document.getElementById('hoursFields');
-  Object.entries(hoursObj).forEach(([day, val]) => {
+  // A listing stores one { status, ranges } object per day (older rows hold a string). Show each
+  // day as the text this form accepts, e.g. "8:00 AM - 11:00 AM, 5:00 PM - 8:00 PM".
+  Object.entries(window.TGDListingHours.normalizeHours(hoursObj)).forEach(([day, dayData]) => {
     const input = document.getElementById(`hours_${day}`);
+    const val = window.TGDListingHours.formatDayText(dayData);
     if (!input || !val) return;
     input.value = val;
-    if (val === 'Closed') {
+    if (dayData.status === 'closed') {
       input.disabled = true;
       const btn = box.querySelector(`.tiny-btn[data-day="${day}"][data-kind="closed"]`);
       if (btn) btn.classList.add('active');
-    } else if (val === 'Open 24 Hours') {
+    } else if (dayData.status === '24_hours') {
       input.disabled = true;
       const btn = box.querySelector(`.tiny-btn[data-day="${day}"][data-kind="open24"]`);
       if (btn) btn.classList.add('active');
@@ -574,9 +577,10 @@ function validatePayload(p) {
   if (p.website && !/^https:\/\/[\w.-]+\.[a-z]{2,}/i.test(p.website)) errors.push('Website URL is invalid.');
   if (!p.listing_id) errors.push('No listing ID found — please return to the listing page.');
 
+  // Each day must be readable as "Closed", "Open 24 Hours" or one or more time ranges
+  // ("9:00 AM - 5:00 PM", or "8:00 AM - 11:00 AM, 5:00 PM - 8:00 PM" for split hours).
   Object.entries(p.hours || {}).forEach(([d, h]) => {
-    if (h && h !== 'Closed' && h !== 'Open 24 Hours' &&
-        !/\d{1,2}:\d{2}\s?(AM|PM)\s?-\s?\d{1,2}:\d{2}\s?(AM|PM)/i.test(h)) {
+    if (h && window.TGDListingHours.parseHoursText(h) === null) {
       errors.push(`Hours for ${d} look incomplete (e.g. 9:00 AM - 5:00 PM).`);
     }
   });

@@ -1073,15 +1073,18 @@ function _renderHours(hours) {
     if (!grid) return;
     grid.innerHTML = DAYS.map(day => {
         const key      = day.toLowerCase();
-        const val      = hours[key] || '';
-        const isClosed = val.toLowerCase() === 'closed';
-        const is24h    = /00:00-23:59|open 24/i.test(val);
+        // Per-day { status, ranges } objects (older rows hold one string per day; both are understood).
+        const dayData  = window.TGDListingHours.normalizeDay(hours[key]);
+        const isClosed = dayData.status === 'closed';
+        const is24h    = dayData.status === '24_hours';
+        const val      = dayData.status === 'open' ? window.TGDListingHours.formatDayText(dayData) : '';
         return `
             <div class="bp-hours-row">
                 <span class="bp-hours-day">${day.slice(0,3)}</span>
                 <input class="bp-input" type="text" id="hours-${key}"
-                       value="${_esc((isClosed || is24h) ? '' : val)}"
+                       value="${_esc(val)}"
                        placeholder="9:00 AM - 5:00 PM"
+                       title="Separate several sets of hours with commas, e.g. 8:00 AM - 11:00 AM, 5:00 PM - 8:00 PM"
                        ${isClosed || is24h ? 'disabled' : ''}>
                 <div class="bp-hours-checks" style="display:flex;gap:14px;">
                     <label class="bp-hours-check">
@@ -1142,18 +1145,26 @@ async function saveChanges() {
 
     const hours = {};
     let hoursChanged = false;
-    DAYS.forEach(day => {
+    for (const day of DAYS) {
         const key    = day.toLowerCase();
         const closed = document.getElementById(`closed-${key}`)?.checked;
         const open24 = document.getElementById(`open24-${key}`)?.checked;
         const input  = document.getElementById(`hours-${key}`)?.value.trim() || '';
-        let val = null;
-        if (closed)      val = 'Closed';
-        else if (open24) val = '00:00-23:59';
-        else if (input)  val = _normalizeHours(input);
+        let val;
+        if (closed)      val = { status: 'closed', ranges: [] };
+        else if (open24) val = { status: '24_hours', ranges: [] };
+        else {
+            // "9:00 AM - 5:00 PM", or several sets separated by commas ("8:00 AM - 11:00 AM, 5:00 PM - 8:00 PM").
+            val = window.TGDListingHours.parseHoursText(input);
+            if (!val) return showToast(`${day} hours look incomplete. Use a format like 9:00 AM - 5:00 PM (separate several sets of hours with commas).`, 'error');
+            const problem = window.TGDListingHours.findRangeProblem(val.ranges);
+            if (problem === 'same')    return showToast(`${day}: a set of hours can't open and close at the same time. Use "24 hrs" for all-day hours.`, 'error');
+            if (problem === 'overlap') return showToast(`${day}: two sets of hours overlap. Adjust the times so they don't overlap.`, 'error');
+        }
         hours[key] = val;
-        if ((listing.hours || {})[key] !== val) hoursChanged = true;
-    });
+        // Compare in canonical form so a not-yet-migrated string value isn't reported as a change.
+        if (JSON.stringify(window.TGDListingHours.normalizeDay((listing.hours || {})[key])) !== JSON.stringify(val)) hoursChanged = true;
+    }
 
     const additionalInfo = [];
     for (let i = 0; i < maxInfoFields; i++) {
@@ -1598,25 +1609,6 @@ function _timeAgo(ts) {
     return days < 30 ? `${days}d ago` : new Date(ts).toLocaleDateString();
 }
 
-function _normalizeHours(value) {
-    const raw = String(value || '').trim();
-    if (!raw) return null;
-    if (/^closed$/i.test(raw)) return 'Closed';
-    if (/24\s*hours?|open\s*24/i.test(raw)) return '00:00-23:59';
-    const toTime = t => {
-        t = t.trim().toUpperCase();
-        const m = t.match(/^(\d{1,2})(?::(\d{2}))?\s*(AM|PM)?$/);
-        if (!m) return null;
-        let h = parseInt(m[1]); const min = parseInt(m[2] || '0');
-        if (m[3] === 'PM' && h < 12) h += 12;
-        if (m[3] === 'AM' && h === 12) h = 0;
-        return `${String(h).padStart(2,'0')}:${String(min).padStart(2,'0')}`;
-    };
-    const parts = raw.split(/\s*[-–]\s*/);
-    if (parts.length === 2) { const s = toTime(parts[0]); const e = toTime(parts[1]); if (s && e) return `${s}-${e}`; }
-    return raw;
-}
-
 function _socialField(label, id, value, placeholder) {
     return `
         <div class="bp-field">
@@ -1688,15 +1680,14 @@ function _diffChanges(original, updates) {
     );
   };
 
-  // Hours: also normalise the time format on both sides so a DB value of
-  // "9:00 AM - 5:00 PM" and a form-produced "09:00-17:00" compare as equal.
+  // Hours: compare the canonical per-day form on both sides, so a legacy string such as
+  // "9:00 AM - 5:00 PM" or "09:00-17:00" and the per-day object it becomes compare as equal,
+  // and days with nothing entered don't count as a change.
   const _canonHours = (obj) => {
     if (!obj || typeof obj !== 'object') return {};
     return Object.fromEntries(
-      Object.entries(obj)
-        .map(([k, v]) => [k, v ? _normalizeHours(v) : null])
-        .filter(([, v]) => v !== null && v !== undefined)
-        .sort(([a], [b]) => a.localeCompare(b))
+      Object.entries(window.TGDListingHours.normalizeHours(obj))
+        .filter(([, day]) => day.status !== 'unknown')
     );
   };
 

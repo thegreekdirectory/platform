@@ -454,22 +454,9 @@ function sanitizeListingDescription(value) {
     return escapeHtml(value || '');
 }
 
-function toDisplayHourLabel(hoursValue) {
-    const raw = String(hoursValue || '').trim();
-    if (!raw || /^closed$/i.test(raw) || /24/.test(raw.toLowerCase())) return raw || 'Closed';
-    if (raw === '00:00-23:59' || raw === '00:00 - 23:59') return 'Open All Day';
-    const match = raw.match(/^(\d{2}):(\d{2})\s*-\s*(\d{2}):(\d{2})$/);
-    if (!match) return raw;
-
-    const toTwelveHour = (hourPart, minutePart) => {
-        const hour = parseInt(hourPart, 10);
-        const suffix = hour >= 12 ? 'PM' : 'AM';
-        const convertedHour = hour % 12 || 12;
-        return `${convertedHour}:${minutePart} ${suffix}`;
-    };
-
-    return `${toTwelveHour(match[1], match[2])} - ${toTwelveHour(match[3], match[4])}`;
-}
+// Hours data model, parsing and formatting are shared with the public site (js/listing-hours.js).
+const TGDHours = window.TGDListingHours;
+if (!TGDHours) console.error('listing-hours.js did not load: hours editing and page generation are unavailable.');
 
 function formatRelativeTime(timestamp) {
     if (!timestamp) return 'recently';
@@ -875,7 +862,7 @@ async function openRequestInEditor(requestId, editable) {
     fillEditForm(editingListing);
 
     if (!editable) {
-        const fields = document.querySelectorAll('#editFormContent input, #editFormContent textarea, #editFormContent select');
+        const fields = document.querySelectorAll('#editFormContent input, #editFormContent textarea, #editFormContent select, #editFormContent [data-hours-control]');
         fields.forEach((el) => el.setAttribute('disabled', 'disabled'));
         const saveBtn = document.getElementById('saveEdit');
         if (saveBtn) saveBtn.classList.add('hidden');
@@ -916,7 +903,7 @@ function normalizeRequestToListing(request) {
         video: request.video || '',
         additional_info: request.additional_info || [],
         custom_ctas: request.custom_ctas || [],
-        hours: request.hours || {},
+        hours: TGDHours.normalizeHours(request.hours),
         social_media: request.social_media || {},
         reviews: request.reviews || {},
         owner: [{
@@ -1603,6 +1590,52 @@ function fillEditForm(listing) {
 // Edit Form Continuation (Hours, Social, Reviews, Owner, Media)
 // ============================================
 
+const EDIT_HOURS_DAYS = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
+
+// One open/close pair. Only rows after the first get a remove button.
+function buildHoursRangeRow(day, range, removable, disabled) {
+    const open = range?.open || '';
+    const close = range?.close || '';
+    return `
+        <div class="flex items-center gap-2" data-hours-range>
+            <input type="time" value="${open}" class="hours-open px-3 py-2 border border-gray-300 rounded-lg" aria-label="${day} opens" title="Opens" ${disabled ? 'disabled' : ''}>
+            <span class="text-sm text-gray-500">to</span>
+            <input type="time" value="${close}" class="hours-close px-3 py-2 border border-gray-300 rounded-lg" aria-label="${day} closes" title="Closes" ${disabled ? 'disabled' : ''}>
+            ${removable ? `<button type="button" data-hours-control onclick="removeHoursRange(this)" class="px-2 py-1 text-gray-500 hover:text-red-600" aria-label="Remove this set of ${day} hours" title="Remove">&#10005;</button>` : ''}
+        </div>
+    `;
+}
+
+function buildHoursDayBlock(day, dayValue) {
+    const data = TGDHours.normalizeDay(dayValue);
+    const isClosed = data.status === 'closed';
+    const is24Hours = data.status === '24_hours';
+    const locked = isClosed || is24Hours;
+    const ranges = data.status === 'open' ? data.ranges : [{}];
+
+    return `
+        <div class="flex gap-3 items-start" data-edit-hours-day="${day}">
+            <label class="w-28 pt-2 flex items-center font-medium text-gray-700">${day}:</label>
+            <div class="flex-1">
+                <div id="editHoursRanges${day}" class="space-y-2">
+                    ${ranges.map((range, index) => buildHoursRangeRow(day, range, index > 0, locked)).join('')}
+                </div>
+                <button type="button" id="editHoursAdd${day}" data-hours-control onclick="addHoursRange('${day}')" class="mt-2 text-sm text-blue-600 hover:underline disabled:opacity-40 disabled:no-underline" ${locked ? 'disabled' : ''}>+ Add hours</button>
+            </div>
+            <div class="flex gap-4 pt-2">
+                <label class="flex items-center gap-1">
+                    <input type="checkbox" id="editClosed${day}" ${isClosed ? 'checked' : ''} onchange="toggleDayClosed('${day}')">
+                    <span class="text-sm">Closed</span>
+                </label>
+                <label class="flex items-center gap-1">
+                    <input type="checkbox" id="edit24Hours${day}" ${is24Hours ? 'checked' : ''} onchange="toggle24Hours('${day}')">
+                    <span class="text-sm">24 Hours</span>
+                </label>
+            </div>
+        </div>
+    `;
+}
+
 function fillEditFormContinuation(listing, owner) {
     const formContent = document.getElementById('editFormContent');
     formContent.innerHTML += `
@@ -1610,26 +1643,7 @@ function fillEditFormContinuation(listing, owner) {
             <div>
                 <h3 class="text-lg font-bold mb-4">Hours of Operation</h3>
                 <div class="grid grid-cols-1 gap-3">
-                    ${['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'].map(day => {
-                        const dayLower = day.toLowerCase();
-                        const hours = listing?.hours && listing.hours[dayLower] ? listing.hours[dayLower] : '';
-                        const isClosed = hours.toLowerCase() === 'closed';
-                        const is24Hours = hours.toLowerCase().includes('24') || hours.toLowerCase().includes('open 24');
-                        
-                        return `
-                        <div class="flex gap-2 items-center">
-                            <label class="w-28 flex items-center font-medium text-gray-700">${day}:</label>
-                            <input type="text" id="editHours${day}" value="${hours}" class="flex-1 px-4 py-2 border border-gray-300 rounded-lg" placeholder="9:00 AM - 5:00 PM or 7:00 PM - 3:00 AM" ${isClosed || is24Hours ? 'disabled' : ''}>
-                            <label class="flex items-center gap-1">
-                                <input type="checkbox" id="editClosed${day}" ${isClosed ? 'checked' : ''} onchange="toggleDayClosed('${day}')">
-                                <span class="text-sm">Closed</span>
-                            </label>
-                            <label class="flex items-center gap-1">
-                                <input type="checkbox" id="edit24Hours${day}" ${is24Hours ? 'checked' : ''} onchange="toggle24Hours('${day}')">
-                                <span class="text-sm">24 Hours</span>
-                            </label>
-                        </div>
-                    `}).join('')}
+                    ${EDIT_HOURS_DAYS.map(day => buildHoursDayBlock(day, listing?.hours?.[day.toLowerCase()])).join('')}
                 </div>
                 <div class="grid grid-cols-1 md:grid-cols-2 gap-4 mt-4">
                     <div>
@@ -2426,40 +2440,45 @@ window.toggleClaimedFields = function() {
     }
 };
 
+// Closed / 24 Hours are mutually exclusive and, when ticked, delete every set of hours for the
+// day (extra sets included). Unticking leaves a single blank set ready to fill in.
+function syncHoursDayLock(day) {
+    const locked = document.getElementById(`editClosed${day}`).checked || document.getElementById(`edit24Hours${day}`).checked;
+    const container = document.getElementById(`editHoursRanges${day}`);
+    if (locked) container.innerHTML = buildHoursRangeRow(day, {}, false, true);
+    else container.querySelectorAll('input').forEach((input) => { input.disabled = false; });
+    document.getElementById(`editHoursAdd${day}`).disabled = locked;
+}
+
 window.toggleDayClosed = function(day) {
-    const input = document.getElementById(`editHours${day}`);
     const closedCheckbox = document.getElementById(`editClosed${day}`);
     const hours24Checkbox = document.getElementById(`edit24Hours${day}`);
-    
-    if (closedCheckbox.checked) {
-        input.value = 'Closed';
-        input.disabled = true;
-        hours24Checkbox.checked = false;
-    } else {
-        if (input.value.toLowerCase() === 'closed') {
-            input.value = '';
-        }
-        input.disabled = false;
-    }
+
+    if (closedCheckbox.checked) hours24Checkbox.checked = false;
+    syncHoursDayLock(day);
 };
 
 // Copyright (C) The Greek Directory, 2025-present. All rights reserved.
 
 window.toggle24Hours = function(day) {
-    const input = document.getElementById(`editHours${day}`);
     const closedCheckbox = document.getElementById(`editClosed${day}`);
     const hours24Checkbox = document.getElementById(`edit24Hours${day}`);
-    
-    if (hours24Checkbox.checked) {
-        input.value = 'Open 24 Hours';
-        input.disabled = true;
-        closedCheckbox.checked = false;
-    } else {
-        if (input.value.toLowerCase().includes('24') || input.value.toLowerCase().includes('open 24')) {
-            input.value = '';
-        }
-        input.disabled = false;
-    }
+
+    if (hours24Checkbox.checked) closedCheckbox.checked = false;
+    syncHoursDayLock(day);
+};
+
+window.addHoursRange = function(day) {
+    if (document.getElementById('editModal')?.dataset.mode === 'request-view') return;
+    if (document.getElementById(`editClosed${day}`).checked || document.getElementById(`edit24Hours${day}`).checked) return;
+    const container = document.getElementById(`editHoursRanges${day}`);
+    container.insertAdjacentHTML('beforeend', buildHoursRangeRow(day, {}, true, false));
+    container.lastElementChild.querySelector('.hours-open')?.focus();
+};
+
+window.removeHoursRange = function(button) {
+    if (document.getElementById('editModal')?.dataset.mode === 'request-view') return;
+    button.closest('[data-hours-range]')?.remove();
 };
 
 // Copyright (C) The Greek Directory, 2025-present. All rights reserved. This source code is proprietary and no part may not be used, reproduced, or distributed without written permission from The Greek Directory. Unauthorized use, copying, modification, or distribution of this code will result in legal action to the fullest extent permitted by law. For more information, visit https://thegreekdirectory.org/legal.
@@ -2524,32 +2543,51 @@ function coordinatesToRawText(value) {
 // Copyright (C) The Greek Directory, 2025-present. All rights reserved.
 
 
-function normalizeSingleTime(value) {
-    const raw = String(value || '').trim().toUpperCase();
-    if (!raw) return null;
-    const match = raw.match(/^(\d{1,2})(?::?(\d{2}))?\s*(AM|PM)?$/i);
-    if (!match) return null;
-    let hour = Number(match[1]);
-    const minute = Number(match[2] || '0');
-    const meridiem = match[3];
-    if (minute > 59 || hour > 24) return null;
-    if (meridiem === 'PM' && hour < 12) hour += 12;
-    if (meridiem === 'AM' && hour === 12) hour = 0;
-    return `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`;
-}
+// Reads the hours editor into { monday: { status, ranges }, ... }. Returns { hours } or
+// { error: { message, focus } } so saveListing can stop before anything is written.
+function collectHoursFromForm() {
+    const hours = {};
+    for (const day of EDIT_HOURS_DAYS) {
+        const key = day.toLowerCase();
+        if (document.getElementById(`editClosed${day}`)?.checked) {
+            hours[key] = { status: 'closed', ranges: [] };
+            continue;
+        }
+        if (document.getElementById(`edit24Hours${day}`)?.checked) {
+            hours[key] = { status: '24_hours', ranges: [] };
+            continue;
+        }
 
-function normalizeHoursInput(value) {
-    const raw = String(value || '').trim();
-    if (!raw) return null;
-    if (/^closed$/i.test(raw)) return 'Closed';
-    if (/24\s*hours|open\s*24/i.test(raw)) return '00:00-23:59';
-    const parts = raw.split(/\s*-\s*/);
-    if (parts.length === 2) {
-        const start = normalizeSingleTime(parts[0]);
-        const end = normalizeSingleTime(parts[1]);
-        return start && end ? `${start}-${end}` : null;
+        const ranges = [];
+        for (const row of document.querySelectorAll(`#editHoursRanges${day} [data-hours-range]`)) {
+            const openInput = row.querySelector('.hours-open');
+            const closeInput = row.querySelector('.hours-close');
+            if (!openInput.value && !closeInput.value) continue;
+            if (!openInput.value || !closeInput.value) {
+                return { error: {
+                    message: `${day}: enter both an open and a close time, or clear that set of hours.`,
+                    focus: () => (openInput.value ? closeInput : openInput).focus()
+                } };
+            }
+            ranges.push({ open: openInput.value, close: closeInput.value });
+        }
+
+        const problem = TGDHours.findRangeProblem(ranges);
+        if (problem) {
+            const firstInput = document.querySelector(`#editHoursRanges${day} .hours-open`);
+            return { error: {
+                message: problem === 'same'
+                    ? `${day}: a set of hours can't open and close at the same time. Use the 24 Hours option for all-day hours.`
+                    : `${day}: two sets of hours overlap. Adjust the times so they don't overlap.`,
+                focus: () => firstInput?.focus()
+            } };
+        }
+
+        // Sorts the sets, drops duplicates, turns a lone 12:00 AM - 11:59 PM into 24 Hours,
+        // and leaves the day "unknown" when nothing was entered.
+        hours[key] = TGDHours.normalizeDay({ status: 'open', ranges });
     }
-    return normalizeSingleTime(raw);
+    return { hours };
 }
 
 async function saveListing() {
@@ -2596,6 +2634,14 @@ async function saveListing() {
         const phoneRawValue = phoneContainer?.querySelector('.phone-number-input')?.value?.trim();
         if (phoneRawValue && !phone) {
             alert('Phone number must be a valid US 10-digit number and is stored as E.164.');
+            return;
+        }
+
+        // Validate hours up front so a bad time range stops the save before geocoding or any write.
+        const hoursResult = collectHoursFromForm();
+        if (hoursResult.error) {
+            alert(hoursResult.error.message);
+            hoursResult.error.focus?.();
             return;
         }
         
@@ -2720,15 +2766,7 @@ const listingData = {
             additional_info: additionalInfo,
             custom_ctas: customCtas.slice(0, maxCtas),
             visible: editingListing?.visible !== false,
-            hours: {
-                monday: normalizeHoursInput(document.getElementById('editHoursMonday').value.trim()),
-                tuesday: normalizeHoursInput(document.getElementById('editHoursTuesday').value.trim()),
-                wednesday: normalizeHoursInput(document.getElementById('editHoursWednesday').value.trim()),
-                thursday: normalizeHoursInput(document.getElementById('editHoursThursday').value.trim()),
-                friday: normalizeHoursInput(document.getElementById('editHoursFriday').value.trim()),
-                saturday: normalizeHoursInput(document.getElementById('editHoursSaturday').value.trim()),
-                sunday: normalizeHoursInput(document.getElementById('editHoursSunday').value.trim())
-            },
+            hours: hoursResult.hours,
             hours_label_custom: document.getElementById('editHoursLabelCustom').value.trim() || null,
             hours_disclaimer_custom: document.getElementById('editHoursDisclaimerCustom').value.trim() || null,
             custom_schema_properties: document.getElementById('editCustomSchemaProperties').value || null,
@@ -3157,6 +3195,21 @@ function valuesAreDifferent(a, b) {
   return JSON.stringify(a) !== JSON.stringify(b);
 }
 
+// Hours are compared and shown in one canonical form, because the listing may hold per-day
+// objects while a public suggestion still carries plain text such as "9:00 AM - 5:00 PM".
+function hoursForDiff(hours) {
+  return TGDHours.hasAnyHours(hours) ? TGDHours.normalizeHours(hours) : null;
+}
+
+function diffHoursText(hours) {
+  if (!TGDHours.hasAnyHours(hours)) return '—';
+  const normalized = TGDHours.normalizeHours(hours);
+  return TGDHours.DAY_KEYS.map((key) => {
+    const lines = TGDHours.formatDayLines(normalized[key], { allDay: 'Open 24 Hours' });
+    return `${key.charAt(0).toUpperCase()}${key.slice(1)}: ${lines.length ? lines.join(', ') : '—'}`;
+  }).join('\n');
+}
+
 function buildDiffRows(suggestion, currentListing) {
   const diffBody = document.getElementById('suggestionDiffBody');
   diffBody.innerHTML = '';
@@ -3171,15 +3224,20 @@ function buildDiffRows(suggestion, currentListing) {
     if (!hasValue) return;
 
     const current   = currentListing ? currentListing[key] : undefined;
-    const isDiff    = valuesAreDifferent(current, suggested);
+    const isHours   = key === 'hours';
+    const isDiff    = isHours
+      ? valuesAreDifferent(hoursForDiff(current), hoursForDiff(suggested))
+      : valuesAreDifferent(current, suggested);
     if (isDiff) changedCount++;
 
     const rowClass  = isDiff ? 'bg-blue-50' : '';
     const diffBadge = isDiff ? '<span class="ml-1 text-xs bg-blue-200 text-blue-800 rounded px-1">changed</span>' : '';
-    const curHtml   = `<span class="text-gray-600 whitespace-pre-wrap break-all">${escHtml(diffVal(current))}</span>`;
+    const curText   = isHours ? diffHoursText(current) : diffVal(current);
+    const sugText   = isHours ? diffHoursText(suggested) : diffVal(suggested);
+    const curHtml   = `<span class="text-gray-600 whitespace-pre-wrap break-all">${escHtml(curText)}</span>`;
     const sugHtml   = isDiff
-      ? `<span class="text-blue-800 font-semibold whitespace-pre-wrap break-all">${escHtml(diffVal(suggested))}</span>`
-      : `<span class="text-gray-500 whitespace-pre-wrap break-all">${escHtml(diffVal(suggested))}</span>`;
+      ? `<span class="text-blue-800 font-semibold whitespace-pre-wrap break-all">${escHtml(sugText)}</span>`
+      : `<span class="text-gray-500 whitespace-pre-wrap break-all">${escHtml(sugText)}</span>`;
 
     diffBody.insertAdjacentHTML('beforeend', `
       <tr class="border-b border-gray-100 ${rowClass}">
@@ -3288,7 +3346,8 @@ async function approveSuggestion(id) {
     if (val === null || val === undefined) return;
     if (typeof val === 'string' && val.trim() === '') return;
     if (Array.isArray(val) && val.length === 0) return;
-    mergePayload[field] = val;
+    // Public suggestions carry hours as text; store them in the per-day object format.
+    mergePayload[field] = field === 'hours' ? TGDHours.normalizeHours(val) : val;
   });
 
   if (!Object.keys(mergePayload).length) {
@@ -3571,7 +3630,7 @@ function decodeEscapedText(value) {
 // Copyright (C) The Greek Directory, 2025-present. All rights reserved.
 
 function generateHoursSchema(listing) {
-    if (!listing.hours || Object.keys(listing.hours).length === 0) {
+    if (!TGDHours.hasAnyHours(listing.hours)) {
         return '[]';
     }
 
@@ -3580,17 +3639,23 @@ function generateHoursSchema(listing) {
         friday: 'Friday', saturday: 'Saturday', sunday: 'Sunday'
     };
 
+    // One OpeningHoursSpecification per set of hours, so a day with split hours
+    // (e.g. 08:00-11:00 and 17:00-20:00) yields two entries that share dayOfWeek.
+    // Closed and unknown days produce nothing; 24-hour days use 00:00-23:59.
     const schemaHours = [];
-    Object.entries(listing.hours).forEach(([day, hours]) => {
-        const normalized = normalizeHoursInput(hours);
-        if (!normalized || normalized === 'Closed') return;
-        const range = normalized.split('-');
-        if (range.length !== 2) return;
-        schemaHours.push({
-            '@type': 'OpeningHoursSpecification',
-            dayOfWeek: dayMap[day],
-            opens: range[0],
-            closes: range[1]
+    const normalizedHours = TGDHours.normalizeHours(listing.hours);
+    TGDHours.DAY_KEYS.forEach((key) => {
+        const day = normalizedHours[key];
+        const ranges = day.status === '24_hours'
+            ? [{ open: '00:00', close: '23:59' }]
+            : (day.status === 'open' ? day.ranges : []);
+        ranges.forEach((range) => {
+            schemaHours.push({
+                '@type': 'OpeningHoursSpecification',
+                dayOfWeek: dayMap[key],
+                opens: range.open,
+                closes: range.close
+            });
         });
     });
 
@@ -3894,7 +3959,7 @@ function generateTemplateReplacements(listing) {
     const isClaimed = listing.is_claimed || (owner && owner.owner_user_id) || listing.show_claim_button === false;
     
     let statusBadges = '';
-    const hasBusinessHours = listing.hours && Object.values(listing.hours).some(value => typeof value === 'string' && value.trim().length > 0);
+    const hasBusinessHours = TGDHours.hasAnyHours(listing.hours);
     if (hasBusinessHours) {
         statusBadges += '<span class="badge badge-closed" id="openClosedBadge">CLOSED</span>';
     }
@@ -4008,15 +4073,18 @@ function generateTemplateReplacements(listing) {
     // Copyright (C) The Greek Directory, 2025-present. All rights reserved.
     
     let hoursSection = '';
-    if (listing.hours && Object.keys(listing.hours).some(day => listing.hours[day])) {
+    if (TGDHours.hasAnyHours(listing.hours)) {
         const hoursUpdatedAtUtc = formatUtcTimestamp(listing.hours_updated_at || listing.updated_at || listing.modified_at);
         const hoursUpdatedBy = getHoursUpdatedByLabel(listing);
         const days = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'];
         const dayKeys = ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'];
         
+        // The day label appears once; each set of hours gets its own line (split hours stack
+        // under a single day). Days with no hours entered read "Closed", as before.
         const hoursRows = dayKeys.map((key, index) => {
-            const hours = listing.hours[key] || 'Closed';
-            return `<div class="flex justify-between text-sm" data-hours-day="${key}"><span class="font-medium hours-day-label">${days[index]}:</span><span class="hours-day-value">${escapeHtml(toDisplayHourLabel(hours))}</span></div>`;
+            const lines = TGDHours.formatDayLines(listing.hours[key]);
+            const hoursText = (lines.length ? lines : ['Closed']).map((line) => escapeHtml(line)).join('<br>');
+            return `<div class="flex justify-between text-sm" data-hours-day="${key}"><span class="font-medium hours-day-label">${days[index]}:</span><span class="hours-day-value">${hoursText}</span></div>`;
         }).join('');
         
         hoursSection = `
@@ -4337,10 +4405,17 @@ function generateTemplateReplacementsPart2(listing) {
                         if (!hours || typeof hours !== 'object') return '';
                         const dayKeys = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
                         const now = new Date();
-                        const day = dayKeys[now.getDay()];
-                        const todayHours = (hours[day] || '').toLowerCase();
+                        const todayHours = hours[dayKeys[now.getDay()]];
                         if (!todayHours) return '';
-                        if (todayHours.includes('closed')) return '<span class="badge badge-closed">CLOSED</span>';
+                        // Per-day objects ({ status, ranges }) or the older one-string-per-day format.
+                        let status;
+                        if (typeof todayHours === 'object') {
+                            status = String(todayHours.status || '').toLowerCase();
+                            if (status !== 'closed' && status !== '24_hours' && !(todayHours.ranges && todayHours.ranges.length)) return '';
+                        } else {
+                            status = String(todayHours).toLowerCase().includes('closed') ? 'closed' : 'open';
+                        }
+                        if (status === 'closed') return '<span class="badge badge-closed">CLOSED</span>';
                         return '<span class="badge badge-open">OPEN</span>';
                     };
                     const getTierBadge = (tier) => {
@@ -4402,10 +4477,17 @@ function generateTemplateReplacementsPart2(listing) {
                         if (!hours || typeof hours !== 'object') return '';
                         const dayKeys = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
                         const now = new Date();
-                        const day = dayKeys[now.getDay()];
-                        const todayHours = (hours[day] || '').toLowerCase();
+                        const todayHours = hours[dayKeys[now.getDay()]];
                         if (!todayHours) return '';
-                        if (todayHours.includes('closed')) return '<span class="badge badge-closed">CLOSED</span>';
+                        // Per-day objects ({ status, ranges }) or the older one-string-per-day format.
+                        let status;
+                        if (typeof todayHours === 'object') {
+                            status = String(todayHours.status || '').toLowerCase();
+                            if (status !== 'closed' && status !== '24_hours' && !(todayHours.ranges && todayHours.ranges.length)) return '';
+                        } else {
+                            status = String(todayHours).toLowerCase().includes('closed') ? 'closed' : 'open';
+                        }
+                        if (status === 'closed') return '<span class="badge badge-closed">CLOSED</span>';
                         return '<span class="badge badge-open">OPEN</span>';
                     };
                     const getTierBadge = (tier) => {
@@ -4494,10 +4576,17 @@ function generateTemplateReplacementsPart2(listing) {
                             if (!hours || typeof hours !== 'object') return '';
                             const dayKeys = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
                             const now = new Date();
-                            const day = dayKeys[now.getDay()];
-                            const todayHours = (hours[day] || '').toLowerCase();
+                            const todayHours = hours[dayKeys[now.getDay()]];
                             if (!todayHours) return '';
-                            if (todayHours.includes('closed')) return '<span class="badge badge-closed">CLOSED</span>';
+                            // Per-day objects ({ status, ranges }) or the older one-string-per-day format.
+                            let status;
+                            if (typeof todayHours === 'object') {
+                                status = String(todayHours.status || '').toLowerCase();
+                                if (status !== 'closed' && status !== '24_hours' && !(todayHours.ranges && todayHours.ranges.length)) return '';
+                            } else {
+                                status = String(todayHours).toLowerCase().includes('closed') ? 'closed' : 'open';
+                            }
+                            if (status === 'closed') return '<span class="badge badge-closed">CLOSED</span>';
                             return '<span class="badge badge-open">OPEN</span>';
                         };
 
@@ -4556,8 +4645,8 @@ function generateTemplateReplacementsPart2(listing) {
     const hasStreetAddress2 = typeof listing.address === 'string' && listing.address.trim().length > 0;
     const coordinates = (hasStreetAddress2 && listing.coordinates) ? `${listing.coordinates.lat},${listing.coordinates.lng}` : '';
     const fullAddress = hasStreetAddress2 ? [listing.address, listing.city, listing.state, listing.zip_code].filter(Boolean).join(', ') : '';
-    const hoursJson = listing.hours ? JSON.stringify(listing.hours) : 'null';
-    const hasBusinessHours = listing.hours && Object.values(listing.hours).some(value => typeof value === 'string' && value.trim().length > 0);
+    const hoursJson = listing.hours ? JSON.stringify(TGDHours.hasAnyHours(listing.hours) ? TGDHours.normalizeHours(listing.hours) : {}) : 'null';
+    const hasBusinessHours = TGDHours.hasAnyHours(listing.hours);
     
     // Copyright (C) The Greek Directory, 2025-present. All rights reserved.
     
@@ -5332,11 +5421,16 @@ function parseHours(csvListing) {
     days.forEach(day => {
         const value = csvListing[`hours_${day}`] || csvListing[`Hours${day.charAt(0).toUpperCase() + day.slice(1)}`] || null;
         if (value) {
+            // Accepts "Closed", "Open 24 Hours", "9:00 AM - 5:00 PM", or split hours such as
+            // "8:00 AM - 11:00 AM, 5:00 PM - 8:00 PM"; stored as the per-day object format.
+            if (TGDHours.parseHoursText(value) === null) {
+                console.warn(`CSV import: could not read ${day} hours "${value}"; leaving that day unknown.`);
+            }
             hours[day] = value;
         }
     });
     
-    return Object.keys(hours).length > 0 ? hours : null;
+    return Object.keys(hours).length > 0 ? TGDHours.normalizeHours(hours) : null;
 }
 
 function parseSocialMedia(csvListing) {

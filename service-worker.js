@@ -22,6 +22,7 @@ const CORE_ASSETS = [
   '/css/business.css',
   '/css/pwa.css',
   '/js/index.js',
+  '/js/listing-hours.js',
   '/js/listings.js',
   '/js/partials-loader.js',
   '/js/pwa/app.js',

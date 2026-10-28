@@ -226,6 +226,7 @@
     <script src="js/pwa/app.js"></script>
     <script src="js/pwa/dock.js"></script>
     <script src="js/pwa/starred.js"></script>
+    <script src="js/listing-hours.js"></script>
     
     <script>
         // Copyright (C) The Greek Directory, 2025-present. All rights reserved.
@@ -328,28 +329,22 @@
             return new Date(baseNow.toLocaleString('en-US', { timeZone: listingTimezone || 'America/Chicago' }));
         }
 
+        // One day's hours -> null (unknown), { closed: true }, { allDay: true, ... } or
+        // { ranges: [{ startMinutes, endMinutes, overnight }] }. Understands per-day objects
+        // ({ status, ranges }) and the older one-string-per-day format (see js/listing-hours.js).
         function parseBusinessHoursRange(value) {
-            const raw = String(value || '').trim();
-            if (!raw) return null;
-            if (/^closed$/i.test(raw)) return { closed: true };
-            if (/24\s*hours|open\s*24/i.test(raw) || raw === '00:00-23:59' || raw === '00:00 - 23:59') return { allDay: true, startMinutes: 0, endMinutes: 1439, overnight: false, closed: false };
-            const rangeMatch = raw.match(/^(.*?)\s*-\s*(.*?)$/);
-            if (!rangeMatch) return null;
-            const parseTime = (part) => {
-                const t = String(part || '').trim();
-                const m12 = t.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
-                if (m12) { let h = parseInt(m12[1],10); const min=parseInt(m12[2],10); const md=m12[3].toUpperCase(); if (md==='PM'&&h!==12) h+=12; if (md==='AM'&&h===12) h=0; return h*60+min; }
-                const m24 = t.match(/^(\d{1,2}):(\d{2})$/); if (!m24) return null; const h=parseInt(m24[1],10), min=parseInt(m24[2],10); if (h>23||min>59) return null; return h*60+min;
+            const schedule = window.TGDListingHours.dayToSchedule(value);
+            if (!schedule || schedule.closed || schedule.allDay) return schedule;
+            return {
+                closed: false,
+                allDay: false,
+                ranges: schedule.ranges.map(range => ({ ...range, overnight: range.endMinutes <= range.startMinutes }))
             };
-            const startMinutes = parseTime(rangeMatch[1]);
-            const endMinutes = parseTime(rangeMatch[2]);
-            if (startMinutes === null || endMinutes === null) return null;
-            return { startMinutes, endMinutes, overnight: endMinutes <= startMinutes, allDay: false, closed: false };
         }
 
         function getHoursStatus(hours, listingTimezone = 'America/Chicago') {
             if (!hours || typeof hours !== 'object' || Object.keys(hours).length === 0) return { isOpen: null, isOpeningSoon: false, isClosingSoon: false };
-            const hasAnyHours = Object.values(hours).some(h => h && h.trim() !== '');
+            const hasAnyHours = window.TGDListingHours.hasAnyHours(hours);
             if (!hasAnyHours) return { isOpen: null, isOpeningSoon: false, isClosingSoon: false };
             const local = getListingLocalDate(listingTimezone);
             const currentMinutes = local.getHours() * 60 + local.getMinutes();
@@ -359,23 +354,28 @@
             const todaySchedule = parseBusinessHoursRange(hours[days[todayIndex]]);
             const yesterdaySchedule = parseBusinessHoursRange(hours[days[yesterdayIndex]]);
             if (todaySchedule?.allDay) return { isOpen: true, isOpeningSoon: false, isClosingSoon: false };
-            if (yesterdaySchedule && !yesterdaySchedule.closed && !yesterdaySchedule.allDay && yesterdaySchedule.overnight && currentMinutes < yesterdaySchedule.endMinutes) {
-                return { isOpen: true, isOpeningSoon: false, isClosingSoon: yesterdaySchedule.endMinutes - currentMinutes <= 60 };
+            // A set of hours that started yesterday and runs past midnight.
+            const carryOver = (yesterdaySchedule?.ranges || []).find(range => range.overnight && currentMinutes < range.endMinutes);
+            if (carryOver) {
+                return { isOpen: true, isOpeningSoon: false, isClosingSoon: carryOver.endMinutes - currentMinutes <= 60 };
             }
-            if (!todaySchedule || todaySchedule.closed) return { isOpen: false, isOpeningSoon: false, isClosingSoon: false };
-            if (todaySchedule.overnight) {
-                if (currentMinutes >= todaySchedule.startMinutes || currentMinutes < todaySchedule.endMinutes) {
-                    const remaining = currentMinutes >= todaySchedule.startMinutes ? (1440 - currentMinutes) + todaySchedule.endMinutes : todaySchedule.endMinutes - currentMinutes;
-                    return { isOpen: true, isOpeningSoon: false, isClosingSoon: remaining <= 60 };
+            // A day can hold several sets of hours (e.g. 8-11 AM and 5-8 PM); open when any covers now.
+            const todayRanges = todaySchedule && !todaySchedule.closed ? todaySchedule.ranges : [];
+            if (!todayRanges.length) return { isOpen: false, isOpeningSoon: false, isClosingSoon: false };
+            for (const range of todayRanges) {
+                if (range.overnight) {
+                    if (currentMinutes >= range.startMinutes || currentMinutes < range.endMinutes) {
+                        const remaining = currentMinutes >= range.startMinutes ? (1440 - currentMinutes) + range.endMinutes : range.endMinutes - currentMinutes;
+                        return { isOpen: true, isOpeningSoon: false, isClosingSoon: remaining <= 60 };
+                    }
+                } else if (currentMinutes >= range.startMinutes && currentMinutes < range.endMinutes) {
+                    return { isOpen: true, isOpeningSoon: false, isClosingSoon: range.endMinutes - currentMinutes <= 60 };
                 }
-                const untilOpen = todaySchedule.startMinutes - currentMinutes;
-                return { isOpen: false, isOpeningSoon: untilOpen > 0 && untilOpen <= 60, isClosingSoon: false };
             }
-            if (currentMinutes >= todaySchedule.startMinutes && currentMinutes < todaySchedule.endMinutes) {
-                return { isOpen: true, isOpeningSoon: false, isClosingSoon: todaySchedule.endMinutes - currentMinutes <= 60 };
-            }
-            const untilOpen = todaySchedule.startMinutes - currentMinutes;
-            return { isOpen: false, isOpeningSoon: untilOpen > 0 && untilOpen <= 60, isClosingSoon: false };
+            // Closed right now: "opening soon" when the next set of hours starts within the hour.
+            const untilNext = todayRanges.map(range => range.startMinutes - currentMinutes).filter(minutes => minutes > 0);
+            const untilOpen = untilNext.length ? Math.min(...untilNext) : Infinity;
+            return { isOpen: false, isOpeningSoon: untilOpen <= 60, isClosingSoon: false };
         }
 
         function isOpenNow(hours, listingTimezone) {

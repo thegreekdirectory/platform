@@ -592,9 +592,17 @@ function getListingHoursBadge(listing) {
     if (!listing || !listing.hours || typeof listing.hours !== 'object') return '';
     const dayKeys = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
     const day = dayKeys[new Date().getDay()];
-    const todayHours = String(listing.hours[day] || '').toLowerCase();
+    const todayHours = listing.hours[day];
     if (!todayHours) return '';
-    return todayHours.includes('closed') ? '<span class="badge badge-closed">CLOSED</span>' : '<span class="badge badge-open">OPEN</span>';
+    // Per-day objects ({ status, ranges }) or the older one-string-per-day format.
+    let status;
+    if (typeof todayHours === 'object') {
+        status = String(todayHours.status || '').toLowerCase();
+        if (status !== 'closed' && status !== '24_hours' && !(todayHours.ranges && todayHours.ranges.length)) return '';
+    } else {
+        status = String(todayHours).toLowerCase().includes('closed') ? 'closed' : 'open';
+    }
+    return status === 'closed' ? '<span class="badge badge-closed">CLOSED</span>' : '<span class="badge badge-open">OPEN</span>';
 }
 
 function getListingTierBadge(listing) {

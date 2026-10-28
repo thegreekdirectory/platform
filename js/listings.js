@@ -1220,50 +1220,19 @@ function getCentralTimeNow(listingTimezone = 'America/Chicago') {
     return getListingLocalDate(listingTimezone);
 }
 
+// One day's hours -> null (unknown), { closed: true }, { allDay: true, ... } or
+// { ranges: [{ startMinutes, endMinutes, overnight }] }. Understands per-day objects
+// ({ status, ranges }) and the older one-string-per-day format (see js/listing-hours.js).
 function parseBusinessHoursRange(value) {
-    const raw = String(value || '').trim();
-    if (!raw) return null;
-    if (/^closed$/i.test(raw)) return { closed: true };
-    if (/24\s*hours|open\s*24/i.test(raw) || raw === '00:00-23:59' || raw === '00:00 - 23:59') {
-        return { allDay: true, startMinutes: 0, endMinutes: 1439, overnight: false, closed: false };
-    }
-
-    const rangeMatch = raw.match(/^(.*?)\s*-\s*(.*?)$/);
-    if (!rangeMatch) return null;
-
-    const parseTime = (part) => {
-        const trimmed = String(part || '').trim();
-        const match12 = trimmed.match(/^(\d{1,2}):(\d{2})\s*(AM|PM)$/i);
-        if (match12) {
-            let hour = parseInt(match12[1], 10);
-            const minute = parseInt(match12[2], 10);
-            const meridiem = match12[3].toUpperCase();
-            if (meridiem === 'PM' && hour !== 12) hour += 12;
-            if (meridiem === 'AM' && hour === 12) hour = 0;
-            return hour * 60 + minute;
-        }
-
-        const match24 = trimmed.match(/^(\d{1,2}):(\d{2})$/);
-        if (match24) {
-            const hour = parseInt(match24[1], 10);
-            const minute = parseInt(match24[2], 10);
-            if (hour > 23 || minute > 59) return null;
-            return hour * 60 + minute;
-        }
-
-        return null;
-    };
-
-    const startMinutes = parseTime(rangeMatch[1]);
-    const endMinutes = parseTime(rangeMatch[2]);
-    if (startMinutes === null || endMinutes === null) return null;
-
+    const schedule = window.TGDListingHours.dayToSchedule(value);
+    if (!schedule || schedule.closed || schedule.allDay) return schedule;
     return {
-        startMinutes,
-        endMinutes,
-        overnight: endMinutes <= startMinutes,
+        closed: false,
         allDay: false,
-        closed: false
+        ranges: schedule.ranges.map(range => ({
+            ...range,
+            overnight: range.endMinutes <= range.startMinutes
+        }))
     };
 }
 
@@ -1272,7 +1241,7 @@ function getHoursStatus(hours, listingTimezone = 'America/Chicago') {
         return { isOpen: null, isOpeningSoon: false, isClosingSoon: false };
     }
 
-    const hasAnyHours = Object.values(hours).some(value => String(value || '').trim() !== '');
+    const hasAnyHours = window.TGDListingHours.hasAnyHours(hours);
     if (!hasAnyHours) {
         return { isOpen: null, isOpeningSoon: false, isClosingSoon: false };
     }
@@ -1289,50 +1258,50 @@ function getHoursStatus(hours, listingTimezone = 'America/Chicago') {
         return { isOpen: true, isOpeningSoon: false, isClosingSoon: false };
     }
 
-    if (yesterdaySchedule && !yesterdaySchedule.closed && !yesterdaySchedule.allDay && yesterdaySchedule.overnight && currentMinutes < yesterdaySchedule.endMinutes) {
+    // A set of hours that started yesterday and runs past midnight.
+    const carryOver = (yesterdaySchedule?.ranges || []).find(range => range.overnight && currentMinutes < range.endMinutes);
+    if (carryOver) {
         return {
             isOpen: true,
             isOpeningSoon: false,
-            isClosingSoon: yesterdaySchedule.endMinutes - currentMinutes <= 60
+            isClosingSoon: carryOver.endMinutes - currentMinutes <= 60
         };
     }
 
-    if (!todaySchedule || todaySchedule.closed) {
+    // A day can hold several sets of hours (e.g. 8-11 AM and 5-8 PM); the listing is open
+    // when any of them covers the current time.
+    const todayRanges = todaySchedule && !todaySchedule.closed ? todaySchedule.ranges : [];
+    if (!todayRanges.length) {
         return { isOpen: false, isOpeningSoon: false, isClosingSoon: false };
     }
 
-    if (todaySchedule.overnight) {
-        if (currentMinutes >= todaySchedule.startMinutes || currentMinutes < todaySchedule.endMinutes) {
-            const remainingMinutes = currentMinutes >= todaySchedule.startMinutes
-                ? (1440 - currentMinutes) + todaySchedule.endMinutes
-                : todaySchedule.endMinutes - currentMinutes;
+    for (const range of todayRanges) {
+        if (range.overnight) {
+            if (currentMinutes >= range.startMinutes || currentMinutes < range.endMinutes) {
+                const remainingMinutes = currentMinutes >= range.startMinutes
+                    ? (1440 - currentMinutes) + range.endMinutes
+                    : range.endMinutes - currentMinutes;
+                return {
+                    isOpen: true,
+                    isOpeningSoon: false,
+                    isClosingSoon: remainingMinutes <= 60
+                };
+            }
+        } else if (currentMinutes >= range.startMinutes && currentMinutes < range.endMinutes) {
             return {
                 isOpen: true,
                 isOpeningSoon: false,
-                isClosingSoon: remainingMinutes <= 60
+                isClosingSoon: range.endMinutes - currentMinutes <= 60
             };
         }
-
-        const minutesUntilOpen = todaySchedule.startMinutes - currentMinutes;
-        return {
-            isOpen: false,
-            isOpeningSoon: minutesUntilOpen > 0 && minutesUntilOpen <= 60,
-            isClosingSoon: false
-        };
     }
 
-    if (currentMinutes >= todaySchedule.startMinutes && currentMinutes < todaySchedule.endMinutes) {
-        return {
-            isOpen: true,
-            isOpeningSoon: false,
-            isClosingSoon: todaySchedule.endMinutes - currentMinutes <= 60
-        };
-    }
-
-    const minutesUntilOpen = todaySchedule.startMinutes - currentMinutes;
+    // Closed right now: "opening soon" when the next set of hours starts within the hour.
+    const minutesUntilNext = todayRanges.map(range => range.startMinutes - currentMinutes).filter(minutes => minutes > 0);
+    const minutesUntilOpen = minutesUntilNext.length ? Math.min(...minutesUntilNext) : Infinity;
     return {
         isOpen: false,
-        isOpeningSoon: minutesUntilOpen > 0 && minutesUntilOpen <= 60,
+        isOpeningSoon: minutesUntilOpen <= 60,
         isClosingSoon: false
     };
 }
@@ -1360,13 +1329,12 @@ Copyright (C) The Greek Directory, 2025-present. All rights reserved.
 function hasUnknownHours(listing) {
     if (!listing.address || isBasedIn(listing)) return false;
     if (!listing.hours || typeof listing.hours !== 'object') return true;
-    const hasAnyHours = Object.values(listing.hours).some(h => h && h.trim() !== '');
+    const hasAnyHours = window.TGDListingHours.hasAnyHours(listing.hours);
     if (!hasAnyHours) return true;
     const centralTime = getCentralTimeNow(listing.timezone || 'America/Chicago');
     const days = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
     const today = days[centralTime.getDay()];
-    const todayHours = listing.hours[today];
-    return !todayHours || todayHours.trim() === '';
+    return window.TGDListingHours.normalizeDay(listing.hours[today]).status === 'unknown';
 }
 
 function calculateDistance(lat1, lon1, lat2, lon2) {

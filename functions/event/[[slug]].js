@@ -170,7 +170,7 @@ async function fetchEventBySlug(slug, serviceRoleKey) {
 async function fetchListingById(id, serviceRoleKey) {
     const encodedId = encodeURIComponent(id);
     const rows = await supabaseRestGet(
-        `listings?id=eq.${encodedId}&select=id,slug,business_name,logo,address,city,state,zip_code,country,phone,website,hours,tier,category&limit=1`,
+        `listings?id=eq.${encodedId}&select=id,slug,business_name,logo,address,city,state,zip_code,country,phone,website,hours,timezone,tier,category&limit=1`,
         serviceRoleKey
     );
     return Array.isArray(rows) && rows.length > 0 ? rows[0] : null;
@@ -588,21 +588,26 @@ function buildShareButtonsHiddenSection(event, eventUrl) {
         </div>`;
 }
 
+function listingHasHours(hours) {
+    return ['monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday', 'sunday'].some((day) => {
+        const value = hours[day];
+        if (!value) return false;
+        // Per-day objects ({ status, ranges }) or the older one-string-per-day format.
+        if (typeof value === 'object') {
+            return ['closed', '24_hours'].includes(String(value.status || '').toLowerCase()) || (Array.isArray(value.ranges) && value.ranges.length > 0);
+        }
+        return String(value).trim() !== '';
+    });
+}
+
+// Whether a listing is open depends on the current moment, and this page is cached (see
+// buildCacheHeaders), so the status can't be baked into the HTML. The server leaves a hidden
+// placeholder carrying the listing's weekly hours and timezone; js/event-page.js fills it in
+// for the current time, in the listing's own timezone, with the shared js/listing-hours.js.
 function getListingHoursBadge(listing) {
     if (!listing || !listing.hours || typeof listing.hours !== 'object') return '';
-    const dayKeys = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
-    const day = dayKeys[new Date().getDay()];
-    const todayHours = listing.hours[day];
-    if (!todayHours) return '';
-    // Per-day objects ({ status, ranges }) or the older one-string-per-day format.
-    let status;
-    if (typeof todayHours === 'object') {
-        status = String(todayHours.status || '').toLowerCase();
-        if (status !== 'closed' && status !== '24_hours' && !(todayHours.ranges && todayHours.ranges.length)) return '';
-    } else {
-        status = String(todayHours).toLowerCase().includes('closed') ? 'closed' : 'open';
-    }
-    return status === 'closed' ? '<span class="badge badge-closed">CLOSED</span>' : '<span class="badge badge-open">OPEN</span>';
+    if (!listingHasHours(listing.hours)) return '';
+    return `<span data-listing-hours-badge data-timezone="${escapeHtml(listing.timezone || 'America/Chicago')}" data-hours="${escapeHtml(JSON.stringify(listing.hours))}" style="display:none"></span>`;
 }
 
 function getListingTierBadge(listing) {
@@ -1597,6 +1602,7 @@ a.hover-bounce:hover, button.hover-bounce:hover { transform: scale(1.03); }
 <script src="/js/pwa/starred.js"></script>
 
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script src="/js/listing-hours.js"></script>
 <script src="/js/event-page.js"></script>
 </body>
 </html>`;

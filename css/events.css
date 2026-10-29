@@ -707,8 +707,8 @@ body.events-sidebar-mode .events-desktop-filters-row {
    own dark block (loaded alongside this file on every collection page)
    only touches ITS OWN class names — none of the events-specific classes
    below. Colors chosen to match the existing dark palette used elsewhere
-   in this codebase (css/listing-page.css, css/index.css, and the
-   individual event page's own dark block): #1a1a1a page background,
+   in this codebase (the listing page template's inline CSS, css/index.css,
+   and the individual event page's own dark block): #1a1a1a page background,
    #2a2a2a card surfaces, #e5e7eb primary text, #9ca3af/#b0b0b0 secondary
    text, #404040 borders.
    ============================================ */

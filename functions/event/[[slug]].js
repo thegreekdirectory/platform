@@ -1408,8 +1408,8 @@ a.hover-bounce:hover, button.hover-bounce:hover { transform: scale(1.03); }
     .description-divider { background: #2a2a2a !important; border-color: #404040 !important; }
     .additional-info-row:nth-child(even), .map-fallback, .read-more-btn, .desktop-contact-card, .event-datetime-block { background: #1f1f1f; color: #e5e7eb; border-color: #404040; }
     .entity-info-card-static { border-color: #404040; }
-    /* Subcategory tag — exact match of listing-page.css's own dark-mode
-       fix for the same component, kept in sync intentionally. */
+    /* Subcategory tag — exact match of the listing page template's own
+       dark-mode fix for the same component, kept in sync intentionally. */
     .subcategory-tag { background: #404040; color: #e5e5e5; }
     /* entity-info-card itself uses color:inherit (already covered by
        body/.bg-white above) — only its two children set an explicit

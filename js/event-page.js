@@ -396,6 +396,40 @@ or distribution of this code can result in legal action to the fullest extent pe
     }
 
     // ---------------------------------------------------------------
+    // Organizer / host card: open-or-closed badge for the linked listing.
+    // This page is cached, so the status can't be baked into the HTML. The
+    // server leaves a hidden placeholder carrying the listing's weekly hours
+    // and timezone; the status is worked out here for the current moment, in
+    // the listing's own timezone, with the same shared hours module listing
+    // pages use (js/listing-hours.js). If that module is unavailable, or the
+    // listing has no hours at all, the badge stays hidden rather than guess.
+    // ---------------------------------------------------------------
+
+    function updateListingHoursBadges() {
+        const hoursModule = window.TGDListingHours;
+        document.querySelectorAll('[data-listing-hours-badge]').forEach((badge) => {
+            let status = null;
+            try {
+                const hours = JSON.parse(badge.getAttribute('data-hours') || 'null');
+                if (hoursModule && hours) {
+                    const timezone = badge.getAttribute('data-timezone') || 'America/Chicago';
+                    status = hoursModule.computeOpenStatus(hours, hoursModule.getListingLocalParts(new Date(), timezone));
+                }
+            } catch (e) {
+                status = null;
+            }
+            if (!status) {
+                badge.style.display = 'none';
+                return;
+            }
+            const isClosed = status === 'CLOSED' || status === 'OPENING_SOON';
+            badge.className = isClosed ? 'badge badge-closed' : 'badge badge-open';
+            badge.textContent = isClosed ? 'CLOSED' : 'OPEN';
+            badge.style.display = '';
+        });
+    }
+
+    // ---------------------------------------------------------------
     // Gallery + lightbox — no listing-page equivalent (listings use a
     // full carousel gallery via a different, already-existing component;
     // this is new). Desktop shows every image at once; mobile paginates
@@ -599,4 +633,7 @@ or distribution of this code can result in legal action to the fullest extent pe
 
     updateLiveStatusBadge();
     setInterval(updateLiveStatusBadge, 60000);
+
+    updateListingHoursBadges();
+    setInterval(updateListingHoursBadges, 60000);
 })();

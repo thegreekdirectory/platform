@@ -4389,6 +4389,8 @@ function generateTemplateReplacementsPart2(listing) {
                     );
                     if (!response.ok) throw new Error('Failed to load parent listing');
                     const data = await response.json();
+                    // The hours badges come from the shared hours module (js/listing-hours.js); load it if the page has not already.
+                    await (window.__tgdHoursReady = window.__tgdHoursReady || (window.TGDListingHours ? Promise.resolve() : new Promise((resolve) => { const s = document.createElement('script'); s.src = '/js/listing-hours.js'; s.onload = resolve; s.onerror = resolve; document.head.appendChild(s); })));
                     const container = document.getElementById('parentListingContainer');
                     if (!data.length) { container.innerHTML = '<p class="text-gray-600 col-span-full">Parent listing not available.</p>'; return; }
                     const l = data[0];
@@ -4401,22 +4403,20 @@ function generateTemplateReplacementsPart2(listing) {
                         if (digits.length === 10) return '(' + digits.slice(0,3) + ') ' + digits.slice(3,6) + '-' + digits.slice(6,10);
                         return phone;
                     };
-                    const getHoursBadge = (hours) => {
-                        if (!hours || typeof hours !== 'object') return '';
-                        const dayKeys = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
-                        const now = new Date();
-                        const todayHours = hours[dayKeys[now.getDay()]];
-                        if (!todayHours) return '';
-                        // Per-day objects ({ status, ranges }) or the older one-string-per-day format.
-                        let status;
-                        if (typeof todayHours === 'object') {
-                            status = String(todayHours.status || '').toLowerCase();
-                            if (status !== 'closed' && status !== '24_hours' && !(todayHours.ranges && todayHours.ranges.length)) return '';
-                        } else {
-                            status = String(todayHours).toLowerCase().includes('closed') ? 'closed' : 'open';
+                    const getHoursBadge = (hours, timezone) => {
+                        // Open or closed right now, in the listing's own timezone, from the shared hours module (js/listing-hours.js).
+                        // The badge is left out rather than guessed when that module is unavailable.
+                        const H = window.TGDListingHours;
+                        if (!H || !hours || typeof hours !== 'object') return '';
+                        try {
+                            const status = H.computeOpenStatus(hours, H.getListingLocalParts(new Date(), timezone || 'America/Chicago'));
+                            if (!status) return '';
+                            return (status === 'CLOSED' || status === 'OPENING_SOON')
+                                ? '<span class="badge badge-closed">CLOSED</span>'
+                                : '<span class="badge badge-open">OPEN</span>';
+                        } catch (e) {
+                            return '';
                         }
-                        if (status === 'closed') return '<span class="badge badge-closed">CLOSED</span>';
-                        return '<span class="badge badge-open">OPEN</span>';
                     };
                     const getTierBadge = (tier) => {
                         if (tier === 'PREMIUM') return '<span class="badge badge-premium">Premium</span>';
@@ -4427,7 +4427,7 @@ function generateTemplateReplacementsPart2(listing) {
                         <div class="flex items-start gap-4">
                             \${l.logo ? \`<img src="\${l.logo}" alt="\${l.business_name}" class="w-14 h-14 rounded-lg object-cover flex-shrink-0">\` : ''}
                             <div class="flex-1 min-w-0 pl-3">
-                                <div class="flex flex-wrap gap-1 mb-1">\${getHoursBadge(l.hours)}\${getTierBadge(l.tier)}</div>
+                                <div class="flex flex-wrap gap-1 mb-1">\${getHoursBadge(l.hours, l.timezone)}\${getTierBadge(l.tier)}</div>
                                 <h3 class="font-bold text-gray-900 mb-1 leading-snug">\${l.business_name}</h3>
                                 \${location ? \`<p class="text-sm text-gray-600 mb-0.5" style="display:flex;align-items:center;gap:6px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#045093" stroke-width="2"><path d="M17.657 16.657L13.414 20.9a2 2 0 01-2.828 0l-4.243-4.243a8 8 0 1111.314 0z"/><circle cx="12" cy="11" r="3"/></svg><span>\${location}</span></p>\` : ''}
                                 \${l.phone ? \`<p class="text-sm text-gray-600" style="display:flex;align-items:center;gap:6px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#045093" stroke-width="2"><path d="M3 5a2 2 0 012-2h3.3a1 1 0 01.95.68l1.5 4.49a1 1 0 01-.5 1.21L8 10.5a11 11 0 005.5 5.5l1.1-2.25a1 1 0 011.2-.5l4.5 1.5a1 1 0 01.7.95V19a2 2 0 01-2 2h-1C9.7 21 3 14.3 3 6V5z"/></svg><span>\${formatPhone(l.phone)}</span></p>\` : ''}
@@ -4463,6 +4463,8 @@ function generateTemplateReplacementsPart2(listing) {
                     );
                     if (!response.ok) throw new Error('Failed to load child listings');
                     const data = await response.json();
+                    // The hours badges come from the shared hours module (js/listing-hours.js); load it if the page has not already.
+                    await (window.__tgdHoursReady = window.__tgdHoursReady || (window.TGDListingHours ? Promise.resolve() : new Promise((resolve) => { const s = document.createElement('script'); s.src = '/js/listing-hours.js'; s.onload = resolve; s.onerror = resolve; document.head.appendChild(s); })));
                     if (!data.length) return; // hide section if no children
                     document.getElementById('childListingsSection').style.display = '';
                     const container = document.getElementById('childListingsContainer');
@@ -4473,22 +4475,20 @@ function generateTemplateReplacementsPart2(listing) {
                         if (digits.length === 10) return '(' + digits.slice(0,3) + ') ' + digits.slice(3,6) + '-' + digits.slice(6,10);
                         return phone;
                     };
-                    const getHoursBadge = (hours) => {
-                        if (!hours || typeof hours !== 'object') return '';
-                        const dayKeys = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
-                        const now = new Date();
-                        const todayHours = hours[dayKeys[now.getDay()]];
-                        if (!todayHours) return '';
-                        // Per-day objects ({ status, ranges }) or the older one-string-per-day format.
-                        let status;
-                        if (typeof todayHours === 'object') {
-                            status = String(todayHours.status || '').toLowerCase();
-                            if (status !== 'closed' && status !== '24_hours' && !(todayHours.ranges && todayHours.ranges.length)) return '';
-                        } else {
-                            status = String(todayHours).toLowerCase().includes('closed') ? 'closed' : 'open';
+                    const getHoursBadge = (hours, timezone) => {
+                        // Open or closed right now, in the listing's own timezone, from the shared hours module (js/listing-hours.js).
+                        // The badge is left out rather than guessed when that module is unavailable.
+                        const H = window.TGDListingHours;
+                        if (!H || !hours || typeof hours !== 'object') return '';
+                        try {
+                            const status = H.computeOpenStatus(hours, H.getListingLocalParts(new Date(), timezone || 'America/Chicago'));
+                            if (!status) return '';
+                            return (status === 'CLOSED' || status === 'OPENING_SOON')
+                                ? '<span class="badge badge-closed">CLOSED</span>'
+                                : '<span class="badge badge-open">OPEN</span>';
+                        } catch (e) {
+                            return '';
                         }
-                        if (status === 'closed') return '<span class="badge badge-closed">CLOSED</span>';
-                        return '<span class="badge badge-open">OPEN</span>';
                     };
                     const getTierBadge = (tier) => {
                         if (tier === 'PREMIUM') return '<span class="badge badge-premium">Premium</span>';
@@ -4502,7 +4502,7 @@ function generateTemplateReplacementsPart2(listing) {
                             <div class="flex items-start gap-4">
                                 \${l.logo ? \`<img src="\${l.logo}" alt="\${l.business_name}" class="w-14 h-14 rounded-lg object-cover flex-shrink-0">\` : ''}
                                 <div class="flex-1 min-w-0 pl-3">
-                                    <div class="flex flex-wrap gap-1 mb-1">\${getHoursBadge(l.hours)}\${getTierBadge(l.tier)}</div>
+                                    <div class="flex flex-wrap gap-1 mb-1">\${getHoursBadge(l.hours, l.timezone)}\${getTierBadge(l.tier)}</div>
                                     <h3 class="font-bold text-gray-900 mb-1 leading-snug">\${l.business_name}</h3>
                                     \${location ? \`<p class="text-sm text-gray-600 mb-0.5" style="display:flex;align-items:center;gap:6px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#045093" stroke-width="2"><path d="M17.657 16.657L13.414 20.9a2 2 0 01-2.828 0l-4.243-4.243a8 8 0 1111.314 0z"/><circle cx="12" cy="11" r="3"/></svg><span>\${location}</span></p>\` : ''}
                                     \${l.phone ? \`<p class="text-sm text-gray-600" style="display:flex;align-items:center;gap:6px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#045093" stroke-width="2"><path d="M3 5a2 2 0 012-2h3.3a1 1 0 01.95.68l1.5 4.49a1 1 0 01-.5 1.21L8 10.5a11 11 0 005.5 5.5l1.1-2.25a1 1 0 011.2-.5l4.5 1.5a1 1 0 01.7.95V19a2 2 0 01-2 2h-1C9.7 21 3 14.3 3 6V5z"/></svg><span>\${formatPhone(l.phone)}</span></p>\` : ''}
@@ -4547,6 +4547,8 @@ function generateTemplateReplacementsPart2(listing) {
                     if (!response.ok) throw new Error('Failed to load related listings');
                     
                     const data = await response.json();
+                    // The hours badges come from the shared hours module (js/listing-hours.js); load it if the page has not already.
+                    await (window.__tgdHoursReady = window.__tgdHoursReady || (window.TGDListingHours ? Promise.resolve() : new Promise((resolve) => { const s = document.createElement('script'); s.src = '/js/listing-hours.js'; s.onload = resolve; s.onerror = resolve; document.head.appendChild(s); })));
                     const relatedListings = data.filter(l => l.id !== currentListingId);
                     
                     const container = document.getElementById('relatedListingsContainer');
@@ -4572,22 +4574,20 @@ function generateTemplateReplacementsPart2(listing) {
                             return phone;
                         };
 
-                        const getHoursBadge = (hours) => {
-                            if (!hours || typeof hours !== 'object') return '';
-                            const dayKeys = ['sunday','monday','tuesday','wednesday','thursday','friday','saturday'];
-                            const now = new Date();
-                            const todayHours = hours[dayKeys[now.getDay()]];
-                            if (!todayHours) return '';
-                            // Per-day objects ({ status, ranges }) or the older one-string-per-day format.
-                            let status;
-                            if (typeof todayHours === 'object') {
-                                status = String(todayHours.status || '').toLowerCase();
-                                if (status !== 'closed' && status !== '24_hours' && !(todayHours.ranges && todayHours.ranges.length)) return '';
-                            } else {
-                                status = String(todayHours).toLowerCase().includes('closed') ? 'closed' : 'open';
+                        const getHoursBadge = (hours, timezone) => {
+                            // Open or closed right now, in the listing's own timezone, from the shared hours module (js/listing-hours.js).
+                            // The badge is left out rather than guessed when that module is unavailable.
+                            const H = window.TGDListingHours;
+                            if (!H || !hours || typeof hours !== 'object') return '';
+                            try {
+                                const status = H.computeOpenStatus(hours, H.getListingLocalParts(new Date(), timezone || 'America/Chicago'));
+                                if (!status) return '';
+                                return (status === 'CLOSED' || status === 'OPENING_SOON')
+                                    ? '<span class="badge badge-closed">CLOSED</span>'
+                                    : '<span class="badge badge-open">OPEN</span>';
+                            } catch (e) {
+                                return '';
                             }
-                            if (status === 'closed') return '<span class="badge badge-closed">CLOSED</span>';
-                            return '<span class="badge badge-open">OPEN</span>';
                         };
 
                         const getTierBadge = (tier) => {
@@ -4605,7 +4605,7 @@ function generateTemplateReplacementsPart2(listing) {
                                 <div class="flex items-start gap-4">
                                     \${l.logo ? \`<img src="\${l.logo}" alt="\${l.business_name}" class="w-14 h-14 rounded-lg object-cover flex-shrink-0">\` : ''}
                                     <div class="flex-1 min-w-0 pl-3">
-                                        <div class="flex flex-wrap gap-1 mb-1">\${getHoursBadge(l.hours)}\${getTierBadge(l.tier)}\${getComingSoonBadge(l.coming_soon)}</div>
+                                        <div class="flex flex-wrap gap-1 mb-1">\${getHoursBadge(l.hours, l.timezone)}\${getTierBadge(l.tier)}\${getComingSoonBadge(l.coming_soon)}</div>
                                         <h3 class="font-bold text-gray-900 mb-1 leading-snug">\${l.business_name}</h3>
                                         <p class="text-sm text-gray-600 mb-0.5" style="display:flex;align-items:center;gap:6px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#045093" stroke-width="2"><path d="M17.657 16.657L13.414 20.9a2 2 0 01-2.828 0l-4.243-4.243a8 8 0 1111.314 0z"/><circle cx="12" cy="11" r="3"/></svg><span>\${location}</span></p>
                                         \${l.phone ? \`<p class="text-sm text-gray-600" style="display:flex;align-items:center;gap:6px;"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#045093" stroke-width="2"><path d="M3 5a2 2 0 012-2h3.3a1 1 0 01.95.68l1.5 4.49a1 1 0 01-.5 1.21L8 10.5a11 11 0 005.5 5.5l1.1-2.25a1 1 0 011.2-.5l4.5 1.5a1 1 0 01.7.95V19a2 2 0 01-2 2h-1C9.7 21 3 14.3 3 6V5z"/></svg><span>\${formatPhone(l.phone)}</span></p>\` : ''}

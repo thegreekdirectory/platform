@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "The Greek Directory — Google Maps",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "Check Google Maps businesses against The Greek Directory and suggest businesses for review.",
   "permissions": ["storage"],
   "host_permissions": ["https://luetekzqrrgdxtopzvqw.supabase.co/*"],

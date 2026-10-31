@@ -40,7 +40,7 @@ async function submit(payload) {
   return data;
 }
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
-  if (!sender.url?.startsWith("https://www.google.com/maps/") && !sender.url?.startsWith("https://maps.google.com/maps/")) {
+  if (msg.type !== "STATUS" && !sender.url?.startsWith("https://www.google.com/maps/") && !sender.url?.startsWith("https://maps.google.com/maps/")) {
     reply({ error: "Google Maps only" }); return;
   }
   if (msg.type === "LOOKUP") { lookup(msg.ids).then(data => reply({ data })).catch(e => reply({ error: e.message })); return true; }

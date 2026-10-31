@@ -20,7 +20,7 @@
     box.style.cssText = "position:fixed;inset:0;z-index:999999;background:#0008;display:grid;place-items:center;font:14px Arial";
     const panel = document.createElement("div");
     panel.style.cssText = "background:white;color:#17212b;padding:22px;border-radius:12px;width:min(400px,90vw)";
-    panel.innerHTML = '<h2>Suggest a Greek-owned business</h2><p>Suggestions are reviewed before being added.</p><strong class="business"></strong><form><p><label><input type="radio" name="rel" value="owner" required> I\'m the owner</label></p><p><label><input type="radio" name="rel" value="family_friend"> Family or friend</label></p><p><label><input type="radio" name="rel" value="knows"> I know it\'s Greek-owned</label></p><p>Optional note</p><textarea maxlength="500" style="width:100%;min-height:65px"></textarea><p class="status"></p><button type="button" class="cancel">Cancel</button> <button>Submit suggestion</button></form>';
+    panel.innerHTML = '<h2>Suggest a Greek-owned business</h2><p>Suggestions are reviewed before being added.</p><strong class="business"></strong><form><p><label><input type="radio" name="rel" value="owner" required> I\'m the owner</label></p><p><label><input type="radio" name="rel" value="family_friend"> Family or friend</label></p><p><label><input type="radio" name="rel" value="knows"> I know it\'s Greek-owned</label></p><p>Optional note</p><textarea maxlength="500" style="width:100%;min-height:65px"></textarea><p class="status"></p><button type="button" class="cancel">Cancel</button> <button type="submit">Submit suggestion</button></form>';
     panel.querySelector(".business").textContent = place.name;
     panel.querySelector(".cancel").onclick = () => box.remove();
     panel.querySelector("form").onsubmit = async e => {

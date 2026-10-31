@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "The Greek Directory — Google Maps",
+  "version": "0.1.0",
+  "description": "Check Google Maps businesses against The Greek Directory and suggest businesses for review.",
+  "permissions": ["storage"],
+  "host_permissions": ["https://luetekzqrrgdxtopzvqw.supabase.co/*"],
+  "content_scripts": [{
+    "matches": ["https://www.google.com/maps/*", "https://maps.google.com/maps/*"],
+    "js": ["config.js", "content.js"],
+    "run_at": "document_idle"
+  }],
+  "background": { "service_worker": "background.js" },
+  "action": { "default_popup": "popup.html" }
+}

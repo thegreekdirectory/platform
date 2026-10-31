@@ -1,24 +1,57 @@
 # The Greek Directory — Google Maps Extension
 
-Chrome Manifest V3 prototype.
+Chrome Manifest V3 prototype, version 0.1.0.
 
-## Install
-1. Set the Supabase publishable key in `config.js`.
-2. Open `chrome://extensions`.
-3. Enable Developer mode and choose **Load unpacked**.
-4. Select this folder, then open Google Maps.
+## Install for local testing
+1. Open `chrome://extensions`.
+2. Enable **Developer mode**.
+3. Select **Load unpacked**.
+4. Choose this `greek-owned-maps` folder.
+5. Open Google Maps and navigate to a business.
 
-## What it does
-- Checks supported Google Place IDs against visible TGD listings.
-- Adds a Greek-owned badge to matched result cards.
-- Provides a form to suggest a business for human review.
-- Uses a random local installation ID for rate limiting.
-- Caches lookup results in Chrome session storage for up to 3 hours.
+The Supabase project URL and public publishable key are configured in `config.js`. Only a public publishable key is included; no service-role key is stored in the extension.
 
-## Important Place ID limitation
-Google Maps does not consistently expose Google Place IDs in page URLs or markup. This version recognizes Place IDs when a `ChIJ...` token or `query_place_id` is present. It intentionally does not treat internal `0x...:0x...` CID values as Place IDs. Some results will therefore not be recognized until a more reliable supported Place ID source is available.
+## Features
+- Checks supported Google Place IDs against visible records in `public.listings`.
+- Adds a TGD Greek-owned badge to matching search result cards and supported business detail pages.
+- Provides a suggestion form with owner, family/friend, and knows-it-is-Greek-owned choices plus an optional note.
+- Suggestions enter a separate queue and require human review before any listing is added.
+- A random local installation UUID is used for request limiting.
+- Lookup cache is held in `chrome.storage.session` for up to three hours and clears when the browser session ends.
 
-## Backend
-Deploy the Edge Functions in `supabase/functions/` with JWT verification disabled and configure them with the project's standard Supabase environment variables. The extension must contain only a public publishable key, never a server secret.
+## Known Google Maps limitation
+Google Maps does not consistently expose Google Place IDs in page URLs or markup. This version detects IDs when a supported `ChIJ...` token or `query_place_id` / `place_id` parameter is present. Internal Maps CID values such as `0x...:0x...` are intentionally not treated as Google Place IDs. Consequently, some businesses will not yet receive a badge or suggestion button. This is a conservative first implementation; it must be tested against current Maps page variants before broad distribution.
 
-This is an initial prototype and should be tested against real Maps page variations before public distribution.
+## Backend functions
+The following Supabase Edge Functions are deployed to the TGD project:
+- `greek-owned-maps-lookup`
+- `greek-owned-maps-suggest`
+- `greek-owned-maps-admin`
+
+Source is in `supabase/functions/`. The database migration is in `supabase/migrations/20261031054358_google_maps_extension.sql`.
+
+### Admin review API
+The admin endpoint requires a GitHub personal access token for a collaborator with write access to `thegreekdirectory/platform`. Do not embed this token in the extension or commit it.
+
+List pending submissions:
+```bash
+curl -X POST "https://luetekzqrrgdxtopzvqw.supabase.co/functions/v1/greek-owned-maps-admin" \
+  -H "Content-Type: application/json" -H "x-github-token: $GITHUB_TOKEN" \
+  -d '{"action":"list"}'
+```
+
+Approve or deny a suggestion after checking its evidence:
+```bash
+curl -X POST "https://luetekzqrrgdxtopzvqw.supabase.co/functions/v1/greek-owned-maps-admin" \
+  -H "Content-Type: application/json" -H "x-github-token: $GITHUB_TOKEN" \
+  -d '{"action":"review","id":"SUGGESTION_UUID","status":"approved","reviewNotes":"Reviewed and verified"}'
+```
+
+Approving a suggestion marks it approved in the queue; it does not automatically create a public directory listing. A separate normal TGD listing-entry process is still required.
+
+## Privacy
+- Runs only on the Google Maps URL patterns listed in `manifest.json`.
+- Does not send search terms, browsing history, account identity, name, email, or location.
+- Lookup requests send Place IDs only; lookup results are not stored server-side.
+- Suggestion submissions send the business name, Place ID, optional address, relationship choice, and optional note for review.
+- No analytics or advertising code is included.

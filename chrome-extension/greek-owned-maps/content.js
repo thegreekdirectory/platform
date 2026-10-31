@@ -23,15 +23,61 @@
     node.textContent = "The Greek Directory · " + message;
   }
 
+  // Converts the Maps internal MID/CID hex pair into the Google Place ID.
+  // Google Maps URLs may contain several pairs; the final pair identifies
+  // the business profile currently represented by that URL.
+  function getPlaceIdFromUrl(url) {
+    const regex = /0x[0-9a-fA-F]+:0x[0-9a-fA-F]+/g;
+    const matches = String(url).match(regex);
+    if (!matches || matches.length === 0) return null;
+
+    const targetPair = matches[matches.length - 1];
+    const [midHex, cidHex] = targetPair.split(":");
+    const mid = BigInt(midHex);
+    const cid = BigInt(cidHex);
+
+    const buffer = new Uint8Array(21);
+    buffer[0] = 0x0a;
+    buffer[1] = 0x12;
+    buffer[2] = 0x09;
+
+    let tempMid = mid;
+    for (let i = 0; i < 8; i++) {
+      buffer[3 + i] = Number(tempMid & 0xffn);
+      tempMid >>= 8n;
+    }
+
+    buffer[11] = 0x11;
+    let tempCid = cid;
+    for (let i = 0; i < 8; i++) {
+      buffer[12 + i] = Number(tempCid & 0xffn);
+      tempCid >>= 8n;
+    }
+
+    let binaryString = "";
+    for (let i = 0; i < buffer.length; i++) {
+      binaryString += String.fromCharCode(buffer[i]);
+    }
+
+    const base64 = btoa(binaryString);
+    return base64.endsWith("A") ? base64.slice(0, -1) : base64;
+  }
+
   function idFrom(value) {
     try {
       const url = new URL(value, location.href);
       const parameter = url.searchParams.get("query_place_id") || url.searchParams.get("place_id");
       if (parameter && /^[A-Za-z0-9_-]{8,300}$/.test(parameter)) return parameter;
+
       const decoded = decodeURIComponent(url.href);
-      const match = decoded.match(/(ChIJ[A-Za-z0-9_-]{10,})/);
-      return match ? match[1] : null;
-    } catch { return null; }
+      const directMatch = decoded.match(/(ChIJ[A-Za-z0-9_-]{10,})/);
+      if (directMatch) return directMatch[1];
+
+      return getPlaceIdFromUrl(decoded);
+    } catch {
+      try { return getPlaceIdFromUrl(value); }
+      catch { return null; }
+    }
   }
 
   function showForm(place) {

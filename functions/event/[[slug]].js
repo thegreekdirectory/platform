@@ -1200,6 +1200,47 @@ a.hover-bounce:hover, button.hover-bounce:hover { transform: scale(1.03); }
 }
 @media (max-width: 767px) { .event-hero-banner { height: 120px; } }
 
+/* Star button — the same circle / blur / hover / starred styling as
+   css/listing-page.css's .star-button (the star on a listing page's
+   photo carousel), value-for-value. This page loads neither that file nor
+   css/listings.css, so the rules are restated here, the same way the
+   rest of this page's styling is self-contained. */
+.star-button {
+    position: absolute;
+    top: 10px;
+    right: 10px;
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: rgba(255,255,255,0.92);
+    backdrop-filter: blur(6px);
+    -webkit-backdrop-filter: blur(6px);
+    border: 1.5px solid rgba(255,255,255,0.6);
+    box-shadow: 0 2px 8px rgba(0,0,0,0.22), 0 0 0 1px rgba(0,0,0,0.04);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 3;
+    transition: transform .15s ease, box-shadow .15s ease, background .15s ease, border-color .15s ease;
+}
+.star-button:hover { transform: scale(1.15); box-shadow: 0 4px 14px rgba(0,0,0,.30), 0 0 0 1px rgba(0,0,0,0.06); background: #fff; }
+.star-button.starred { background: rgba(255,253,235,.97); border-color: rgba(234,179,8,.5); box-shadow: 0 2px 10px rgba(202,138,4,.30), 0 0 0 1px rgba(234,179,8,0.15); }
+.star-icon { width: 17px; height: 17px; fill: #d1d5db; stroke: #9ca3af; stroke-width: 1.8; pointer-events: none; }
+.star-button.starred .star-icon { fill: #facc15; stroke: #ca8a04; }
+
+/* Where the star sits: a listing page puts it at the top-right of its hero
+   photo carousel; this page's hero is the banner above, so the star goes
+   at the banner's top-right, lined up with the right edge of the white
+   card below (the layer reuses <main>'s own max-w-6xl / px-4 column, and
+   the inner position:relative box is what makes top/right on the button
+   measure from that column's edge rather than the page's). The layer is a
+   SIBLING of the banner, not a child: the banner is aria-hidden
+   (decorative), and a focusable button inside an aria-hidden region would
+   be unreachable to screen readers yet still tabbable. */
+.event-hero-star-wrap { position: relative; }
+.event-hero-star-layer { position: absolute; top: 0; left: 0; right: 0; }
+
 /* Gallery grid + lightbox */
 .event-gallery-section { max-width: 100%; }
 .event-gallery-grid {
@@ -1463,7 +1504,18 @@ a.hover-bounce:hover, button.hover-bounce:hover { transform: scale(1.03); }
 
 <div data-partial="header"></div>
 
-<section class="event-hero-banner" aria-hidden="true"></section>
+<div class="event-hero-star-wrap">
+    <section class="event-hero-banner" aria-hidden="true"></section>
+    <div class="event-hero-star-layer">
+        <div class="max-w-6xl mx-auto px-4">
+            <div style="position: relative;">
+                <button type="button" class="star-button" data-event-id="${escapeHtml(event.id)}" onclick="toggleEventStar(event)" aria-label="Star event" aria-pressed="false">
+                    <svg class="star-icon" viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
 
 <main class="max-w-6xl mx-auto px-4 py-8">
     <div class="bg-white rounded-lg p-6 card-shadow">

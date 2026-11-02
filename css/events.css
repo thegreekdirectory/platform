@@ -359,70 +359,169 @@ or distribution of this code can result in legal action to the fullest extent pe
     letter-spacing: 0.02em;
 }
 
-/* Toolbar row — Filters button first, view toggle immediately after it
-   (both wrap together as a unit on narrow viewports since they're
-   adjacent siblings, not two separately-wrapping flex groups the way an
-   earlier version of this row had them split — confirmed reported bug:
-   "the view options... should be to the right of the Filters button when
-   on a mobile(-like) viewport"). flex-wrap (not overflow-x-auto, unlike
-   listings.html's own #mobileControls, which genuinely does allow
-   horizontal scroll as its own designed fallback) is kept here
-   specifically because a PRIOR request already asked for wrapping over
-   horizontal scrolling on this exact row — the two requests don't
-   conflict (this one is about ORDER, not about scroll-vs-wrap), so both
-   fixes coexist: Filters+the view toggle now wrap together as the first
-   line when space runs out, with Sort/Subscribe wrapping to their own
-   line after. */
-.events-toolbar-row {
-    flex-wrap: wrap;
+/* ============================================
+   CONTROLS — mirrors listings.html / css/listings.css
+   ============================================
+   Listings styles its toolbar buttons through rules keyed on ITS OWN
+   ids (#filterBtn, #mapBtnDesktop, #gridViewBtn2, #starToggleBtnDesktop
+   ... in css/listings.css, plus a touch-action block in listings.html's
+   inline <style>), so the Event*-prefixed ids used on this page get none
+   of them for free. Everything in this section is the corresponding
+   Listings rule with the ids swapped, value-for-value, so the controls
+   render identically in both themes — the same "exact match" standard
+   the .events-hero rule further down already follows.
+
+   This replaces the earlier labeled four-button Grid/List/Calendar/Map
+   toggle: grid/list is now a separate wordless toggle exactly like
+   Listings', and Map and Calendar are their own panel-opening buttons
+   (see setLayout() / setActivePanel() in js/events.js). */
+
+/* Touch-action fixes — same list as listings.html's inline block. */
+#eventFilterBtn,
+#eventDesktopFilterToggleBtn,
+#eventMapBtn, #eventMapBtnDesktop,
+#eventCalendarBtn, #eventCalendarBtnDesktop,
+#eventGridViewBtn, #eventGridViewBtn2,
+#eventListViewBtn, #eventListViewBtn2,
+#eventSplitFiltersBtn,
+#eventStarToggleBtnMobile, #eventStarToggleBtnDesktop {
+    touch-action: manipulation;
+    -webkit-tap-highlight-color: transparent;
 }
 
-/* View toggle: grid / list / calendar — a third option beyond listings'
-   grid/list pair, since a calendar is the one view type genuinely unique
-   to a chronological event feed. */
-.events-view-toggle {
-    display: flex;
-    background: #f3f4f6;
-    border-radius: 8px;
-    padding: 3px;
-    gap: 2px;
+/* SVG icon colors — all #045093 (css/listings.css "SVG ICON COLORS"). */
+#eventFilterBtn svg,
+#eventDesktopFilterToggleBtn svg,
+#eventSplitFiltersBtn svg,
+#eventMapBtn svg, #eventMapBtnDesktop svg,
+#eventCalendarBtn svg, #eventCalendarBtnDesktop svg,
+#eventListViewBtn svg, #eventListViewBtn2 svg {
+    color: #045093 !important;
+    stroke: #045093 !important;
 }
 
-.events-view-toggle button {
-    padding: 6px 10px;
-    border-radius: 6px;
-    font-size: 13px;
-    font-weight: 600;
-    color: #6b7280;
+#eventGridViewBtn svg path,
+#eventGridViewBtn2 svg path {
+    fill: #045093 !important;
+}
+
+/* Grid/List toggle — selected state. Inactive buttons get an explicit
+   transparent background so they never fall through to the browser's
+   native <button> chrome once the bg-white/shadow-sm utilities are
+   removed from them; the surrounding .bg-gray-100 pill shows through. */
+#eventGridViewBtn, #eventGridViewBtn2,
+#eventListViewBtn, #eventListViewBtn2 {
     background: transparent;
-    border: none;
-    cursor: pointer;
-    transition: all 0.15s ease;
-    display: flex;
+}
+
+#eventGridViewBtn.active, #eventGridViewBtn2.active,
+#eventListViewBtn.active, #eventListViewBtn2.active {
+    background: #045093 !important;
+}
+
+#eventGridViewBtn.active svg path,
+#eventGridViewBtn2.active svg path {
+    fill: white !important;
+}
+
+#eventListViewBtn.active svg,
+#eventListViewBtn2.active svg {
+    stroke: white !important;
+}
+
+/* Map / Calendar — "open" state. Listings has a single Map button and
+   leaves it unhighlighted while the map is showing (the map itself is
+   the indicator); Events has TWO buttons that open the same slot, so
+   which one is open needs to be visible on the button too. Reuses the
+   filled-blue treatment the grid/list toggle above and .toggle-option
+   already use for "selected". */
+#eventMapBtn.active, #eventMapBtnDesktop.active,
+#eventCalendarBtn.active, #eventCalendarBtnDesktop.active {
+    background: #045093 !important;
+    border-color: #045093 !important;
+    color: #fff !important;
+}
+
+#eventMapBtn.active svg, #eventMapBtnDesktop.active svg,
+#eventCalendarBtn.active svg, #eventCalendarBtnDesktop.active svg {
+    color: #fff !important;
+    stroke: #fff !important;
+}
+
+/* Starred-events toggle (desktop + mobile) — pinned to the same 38px as
+   the text buttons beside it, and the same amber "on" state, as
+   css/listings.css's #starToggleBtn* rules. */
+#eventStarToggleBtnDesktop,
+#eventStarToggleBtnMobile {
+    height: 38px;
+}
+
+#eventStarToggleBtnDesktop.starred,
+#eventStarToggleBtnMobile.starred {
+    background: #fffdeb;
+    border-color: rgba(234, 179, 8, 0.5);
+}
+
+/* Borderless text-style buttons inside the panel header (css/listings.css:
+   #clearFiltersBtn, #clearFiltersBtn2, #toggleFilterPosition). */
+#eventClearFiltersBtn,
+#eventClearFiltersBtn2,
+#eventHideFiltersBtn {
+    background: transparent !important;
+    border: none !important;
+    box-shadow: none !important;
+}
+
+/* Active-filter count badge on the Filters buttons. Its own class rather
+   than Tailwind utilities because the previous markup combined "hidden"
+   with "inline-flex" — and in src/output.css .inline-flex is defined AFTER
+   .hidden at identical specificity, so display:inline-flex always won and
+   the badge showed a permanent "0" even with no filters applied.
+   The compound .event-filter-count.hidden rule below is what actually
+   lets "hidden" work, the same fix this file already uses for
+   .load-more-btn.hidden. */
+.event-filter-count {
+    display: inline-flex;
     align-items: center;
-    gap: 5px;
+    justify-content: center;
+    width: 1.25rem;
+    height: 1.25rem;
+    font-size: 0.75rem;
+    line-height: 1rem;
+    font-weight: 700;
+    color: #fff;
+    background: #045093;
+    border-radius: 9999px;
 }
-
-.events-view-toggle button.active {
-    background: white;
-    color: #045093;
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
-}
-
-/* Hidden below 1024px unconditionally (see the @media (min-width:
-   1024px) block further down for where it's turned on) — no sidebar
-   concept exists at narrower widths, so this row would just duplicate
-   the main toolbar's #eventFilterBtn. Also hidden whenever the sidebar
-   IS currently visible (JS toggles body.events-sidebar-mode — see
-   updateFilterPanelPosition() in js/events.js), since this row's whole
-   purpose is to be the way back IN once the sidebar has been hidden;
-   showing both the sidebar and this row's own "Filters" button at once
-   would be two controls for the same thing on screen simultaneously. */
-.events-desktop-filters-row {
+.event-filter-count.hidden {
     display: none;
 }
-body.events-sidebar-mode .events-desktop-filters-row {
-    display: none !important;
+
+/* Subscribe is Events' own control (Listings has no counterpart), so on a
+   phone it is the one thing that would stop the results count and the sort
+   select sharing a single line the way Listings' do. Below 640px it
+   collapses to its icon (the label stays in the DOM for screen readers,
+   and aria-label/title name the button); the padding matches the star
+   toggle's px-3 so it reads as a sibling icon button. */
+@media (max-width: 639px) {
+    #eventSubscribeFeedBtn .event-subscribe-label {
+        display: none;
+    }
+    #eventSubscribeFeedBtn {
+        padding-left: 0.75rem;
+        padding-right: 0.75rem;
+    }
+}
+
+/* Desktop-width Filters button (beside the results count) — Listings'
+   #desktopFilterToggleBtn: hidden below 1024px (the mobile controls row
+   has its own Filters button there) and hidden while the sidebar is
+   showing (the sidebar's own swap control takes over). The 1024px
+   breakpoint matches Tailwind's lg: and css/listings.css's desktop
+   block. body.events-sidebar-mode is toggled by
+   updateFilterPanelPosition() in js/events.js. */
+#eventDesktopFilterToggleBtn {
+    display: none;
 }
 
 /* Calendar grid */
@@ -559,10 +658,12 @@ body.events-sidebar-mode .events-desktop-filters-row {
 
 /* Homepage hero — mirrors listings.html's .listings-hero exactly (same
    background image + gradient overlay treatment, same h1/h2 structure),
-   with copy tweaked for Events. Distinct from .event-region-hero above
-   (a plain gradient, no photo) — the user asked specifically for the
-   listings.html picture-hero style on the Events main page; regional
-   pages keep their existing simpler treatment unless asked to match too.
+   with copy tweaked for Events. Used by BOTH the Events homepage and the
+   location pages (/events/chicago etc.): the picture hero was first
+   requested for the homepage alone, with the regional pages keeping a
+   simpler plain-gradient hero (.event-region-hero, now removed) "unless
+   asked to match too" — a later request asked for the location pages to
+   match the listings page as well, so they now share this exact rule.
 
    Below is copied from listings.html's own <style> block property-for-
    property (selector names only renamed events-hero/events-hero-content
@@ -620,26 +721,6 @@ body.events-sidebar-mode .events-desktop-filters-row {
     }
 }
 
-.event-region-hero {
-    background: linear-gradient(135deg, #045093 0%, #0a6bc2 100%);
-    color: white;
-    padding: 48px 16px 32px;
-    text-align: center;
-}
-
-.event-region-hero h1 {
-    font-size: 32px;
-    font-weight: 800;
-    margin-bottom: 8px;
-}
-
-.event-region-hero p {
-    font-size: 15px;
-    color: rgba(255, 255, 255, 0.85);
-    max-width: 560px;
-    margin: 0 auto;
-}
-
 @media (max-width: 767px) {
     /* .event-page-main / .event-poster-frame removed — confirmed dead
        code, part of this file's unused "Event detail page" design
@@ -647,20 +728,6 @@ body.events-sidebar-mode .events-desktop-filters-row {
        individual event page (functions/event/[[slug]].js) has its own
        separate inline <style> block and never references these classes. */
     .event-calendar-day { min-height: 56px; }
-    .event-region-hero h1 { font-size: 24px; }
-    /* Grid/List/Calendar/Map toggle: icons only, no text labels. Four
-       labeled buttons ("Grid" / "List" / "Calendar" / "Map") next to the
-       Filters button and the sort <select> don't fit a phone-width
-       toolbar without wrapping or squeezing; the labels are the part
-       that can go without losing the toggle's function, since the four
-       icons are already visually distinct from each other (grid squares,
-       horizontal lines, calendar, map pin) and match the icon vocabulary
-       used elsewhere on the site. Padding tightened from 6px 10px to
-       6px 8px on the buttons themselves so four icon-only buttons at
-       roughly equal width look like an intentional icon-toggle rather
-       than a labeled toggle with the labels just cut off. */
-    .events-view-toggle-label { display: none; }
-    .events-view-toggle button { padding: 6px 8px; }
 }
 
 /* ICS feed subscribe dropdown (toolbar "Subscribe" button) — same
@@ -679,9 +746,9 @@ body.events-sidebar-mode .events-desktop-filters-row {
    extends leftward, which is already the safer default for a button
    sitting near the right side of the screen — the actual clipping risk
    is the opposite case: the Subscribe button sitting near the LEFT
-   edge of a narrow viewport (a real possibility after this same file's
-   toolbar was restructured so Filters + the view toggle wrap together
-   as a unit, which can push Sort/Subscribe onto their own line
+   edge of a narrow viewport (a real possibility whenever the toolbar wraps
+   and leaves Subscribe on a line of its own — as the earlier toolbar's
+   Filters + view-toggle unit did, pushing Sort/Subscribe onto a line
    starting near screen-left), where extending a 220px-wide menu
    further left than the button's own left edge pushes part of it past
    x=0 — genuinely off-screen, and past the point where the BROWSER
@@ -733,10 +800,6 @@ body.events-sidebar-mode .events-desktop-filters-row {
        needs a dark counterpart or it would look washed-out/wrong on a
        dark card. */
     .event-badge-price { background: #1f3a5f; color: #7ab8f5; }
-
-    .events-view-toggle { background: #1f1f1f; }
-    .events-view-toggle button { color: #9ca3af; }
-    .events-view-toggle button.active { background: #2a2a2a; color: #7ab8f5; }
 
     .event-calendar { background: #2a2a2a; }
     .event-calendar-header h3 { color: #e5e7eb; }
@@ -849,7 +912,7 @@ body.events-sidebar-mode .events-desktop-filters-row {
    scale(1.1) — a 10% size increase — was designed for small square
    elements (icon buttons, small cards) where a 10% grow reads as a
    subtle bounce; applied to a ~full-width row (used by both the List
-   view and the Calendar view's day-detail popover — both call
+   layout and the Calendar panel's day-detail popover — both call
    buildEventListRowHtml, see js/events.js) the same 10% growth becomes
    a large, jarring jump in absolute pixels. Confirmed reported bug:
    "expands wayyyy too much" while still keeping "the current
@@ -873,123 +936,118 @@ body.events-sidebar-mode .events-desktop-filters-row {
 .event-list-row.hover-bounce:hover { transform: scale(1.02); }
 
 /* ============================================
-   ADVANCED FILTER SYSTEM — Side View by default
+   FILTER PANEL — one panel, two homes
    ============================================
-   #eventDesktopLayout ID-scoped (NOT the bare .desktop-layout class,
-   which is also used — unrelated — by listings.html/css/listings.css;
-   scoping to this page's own id keeps the two systems from ever
-   interacting even though both files load together here). Unlike
-   Listings' own left-sidebar mode (an opt-in user preference that
-   defaults OFF — see js/listings.js's "let filterPosition = 'top'"),
-   this is the default and only desktop layout for Events' Grid/List
-   views specifically, per the request: "default is Side View, but
-   when it's in Calendar or Map it toggles on top." Calendar/Map are
-   structurally OUTSIDE #eventDesktopLayout (see
-   functions/events/_app-shell.js) and js/events.js's
-   updateFilterPanelPosition() moves #eventFilterPanel out of the
-   sidebar slot and back to its original overlay position whenever
-   either of those views is active, so no view-specific CSS branch is
-   needed here — the plain mobile/overlay rules below already apply
-   correctly whenever the panel is in that slot. */
+   js/events.js's updateFilterPanelPosition() moves #eventFilterPanel
+   between:
+     - #eventDesktopFiltersSlot (inside .desktop-layout): the left
+       SIDEBAR, at >=1024px while Split View is closed.
+     - #eventFilterPanelOverlaySlot: the full-width TOP-BAR panel, used
+       below 1024px and while Split View is open.
+   That is Listings' pair of panels (#desktopFilterPanel / #filterPanel)
+   with one panel instead of two duplicated forms.
+
+   .desktop-layout / .desktop-filters / .desktop-content /
+   .with-left-filters / .listings-2-col themselves come straight from
+   css/listings.css (same classes, same markup shape), so only the parts
+   that file ties to Listings' own ids are restated here. */
+
+/* Top-bar home — listings.html's inline "#filterPanel top-bar style"
+   rule, value-for-value. The dark override sits directly after the rule
+   it corrects (not in the earlier dark-mode block) for the same
+   cascade-order reason as this file's other overrides. */
+#eventFilterPanelOverlaySlot #eventFilterPanel {
+    position: relative;
+    z-index: 30;
+    background: #fff;
+    border-bottom: 1px solid #e5e7eb;
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.08);
+    max-height: calc(100vh - 60px);
+    overflow-y: auto;
+}
+@media (prefers-color-scheme: dark) {
+    #eventFilterPanelOverlaySlot #eventFilterPanel {
+        background: #2a2a2a;
+        border-bottom-color: #404040;
+    }
+}
+
+/* Header variants inside the one panel: the "desktop/sidebar" pair (swap
+   control + separate Clear All row) only exists in the sidebar home; the
+   "mobile" pair (Clear All + close) everywhere else. */
+#eventFilterPanel .event-filter-header-desktop {
+    display: none;
+}
+
 @media (min-width: 1024px) {
-    #eventDesktopLayout {
-        display: flex;
-        gap: 24px;
-        align-items: flex-start;
-    }
-    #eventDesktopFiltersSlot {
-        width: 280px;
-        flex-shrink: 0;
-    }
-    #eventDesktopFiltersSlot:empty {
-        display: none;
-    }
-    .desktop-content {
-        flex: 1;
-        min-width: 0;
-    }
-    /* "# events found" + Filters-toggle row, shown at desktop widths
-       only — below 1024px there's no sidebar concept at all (the
-       filter panel is always a full-overlay there), so the main
-       toolbar's #eventFilterBtn already covers Filters and this row
-       would be redundant. Hidden by default (base rule below, outside
-       any media query) and shown here specifically. */
-    .events-desktop-filters-row {
-        display: flex;
-    }
-    /* #eventFilterPanel while it's sitting inside the sidebar slot —
-       "sidebar mode." Same sticky/bordered/self-contained-scroll
-       treatment as Listings' #filterPanel.desktop-sidebar rule, applied
-       here via a plain descendant selector rather than a class toggle
-       on the panel itself, since which slot the panel is IN is already
-       the signal for which mode it's in — no second class needed to
-       track the same state a second way. */
-    /* NOT display:block !important anymore — that unconditionally forced
-       the panel visible the instant it entered this slot, which is
-       exactly wrong now that filters are hidden by default (issue: "the
-       big space that won't go away" root cause traced to this same
-       always-visible assumption, and the new "hidden by default, shown
-       via a button" requirement needs the panel's actual .hidden class
-       to matter here, not be overridden). Position/sizing (sticky,
-       height, border, background) stay unconditional — those describe
-       what the panel looks like WHEN shown, not whether it's shown.
-       Actual visibility is governed by the plain .hidden rule from
-       src/output.css (display:none) still applying at this same
-       specificity level now that nothing here fights it. */
+    /* Sidebar home — css/listings.css's #desktopFilterPanel.desktop-sidebar
+       rule, value-for-value (sticky under the header, self-scrolling,
+       bordered card; the translateZ(0)/will-change pair is that rule's
+       fix for a Chromium paint gap at the rounded bottom corners when
+       overflow-y:auto and border-radius meet). Sticky only has room to
+       travel because .desktop-filters stretches to the row's full height
+       — which is why the layout deliberately does NOT set
+       align-items:flex-start. */
     #eventDesktopFiltersSlot #eventFilterPanel {
         position: sticky;
-        top: 80px;
-        height: fit-content;
-        max-height: calc(100vh - 100px);
+        top: 76px;
+        max-height: calc(100vh - 92px);
         overflow-y: auto;
+        margin-left: 8px;
         border: 1px solid #e5e7eb;
         border-radius: 8px;
-        background: white;
+        background: #fff;
+        box-sizing: border-box;
+        transform: translateZ(0);
+        will-change: transform;
     }
-    /* Dark-mode override for the rule directly above, NOT placed inside
-       the main @media (prefers-color-scheme: dark) block earlier in
-       this file — that block comes BEFORE this unconditional sidebar
-       rule in source order, and both selectors have identical
-       specificity, so a dark override placed there would be overwritten
-       by this rule's own "background: white" the instant this rule is
-       reached, regardless of dark mode being active. Placing the
-       override here, after the rule it corrects, is what actually makes
-       it win — same reasoning as this file's other cascade-order fixes
-       (.load-more-btn.hidden, .event-list-row.hover-bounce:hover
-       further below) that call out exactly this kind of position-
-       dependent bug rather than assuming any override "in a dark-mode
-       block" automatically applies. */
+    /* Dark override placed after the rule it corrects — see the
+       top-bar home's note above. */
     @media (prefers-color-scheme: dark) {
         #eventDesktopFiltersSlot #eventFilterPanel {
             background: #2a2a2a;
             border-color: #404040;
         }
     }
-    /* Suppress the mobile-style page-width wrapper and Close (✕) button
-       once inside the sidebar — a persistent sidebar doesn't need a
-       close button the way a slide-down overlay does, and the
-       max-w-7xl/mx-auto/px-4 wrapper below was sized for full page
-       width, not a 280px column. */
+    /* The panel's inner wrapper carries max-w-7xl/mx-auto/px-4/py-4 for
+       the full-width top-bar home; in a 300px column it becomes plain
+       16px padding, same as Listings' sidebar. */
     #eventDesktopFiltersSlot #eventFilterPanel > div {
         max-width: none;
         margin: 0;
         padding: 16px;
     }
-    /* #eventCloseFilterBtn ("✕") is no longer hidden in sidebar mode —
-       previously hidden here on the reasoning that "a persistent
-       sidebar doesn't need a close button," which held when the
-       sidebar was always-shown by default. Now that filters are hidden
-       by default and the sidebar is something the user explicitly
-       shows, the same ✕ button needs to be able to hide it again — see
-       bindFilterPanelEvents() in js/events.js, which branches this
-       button's click handler by current sidebar-vs-overlay context
-       rather than having a separate dedicated "hide sidebar" button. */
-    /* Toggled on <body> by updateFilterPanelPosition() (js/events.js)
-       whenever the panel is in sidebar mode — see that function's own
-       comment for why the button needs hiding here specifically. */
-    body.events-sidebar-mode #eventFilterBtn {
+    #eventDesktopFiltersSlot #eventFilterPanel .event-filter-header-mobile {
         display: none;
     }
+    #eventDesktopFiltersSlot #eventFilterPanel .event-filter-header-desktop {
+        display: block;
+    }
+
+    /* Desktop Filters button: shown unless the sidebar is showing. */
+    body:not(.events-sidebar-mode) #eventDesktopFilterToggleBtn {
+        display: flex;
+    }
+}
+
+/* Map panel sizing — css/listings.css's #map rule, value-for-value, so
+   the Events map opens at the same height as the Listings map (it used
+   to be an inline height:70vh). */
+#eventsMap {
+    width: 100%;
+    height: calc(100vh - 300px);
+    max-height: 600px;
+    min-height: 400px;
+}
+
+/* Star buttons (cards, list rows, split view) — css/listings.css supplies
+   the circle/blur/hover/starred styling this page already loads; the one
+   thing restated is z-index: listings.html overrides that file's 10 down
+   to 3 in its own inline <style> and so does this page, so a card's star
+   never paints above the filter panels / header the way a z-index:10
+   star could while scrolling. */
+.star-button {
+    z-index: 3;
 }
 
 /* .split-view-map is a real shared class (css/listings.css) reused here

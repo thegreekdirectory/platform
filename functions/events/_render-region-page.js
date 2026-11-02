@@ -143,10 +143,17 @@ export async function renderRegionPage({ region, regionSlug, env, request }) {
 <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.Default.css" />
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <link rel="manifest" href="/manifest.json">
-<link rel="stylesheet" href="/css/index.css">
+<!-- Same stylesheet order as events.html / functions/events/index.js and
+     listings.html: output.css FIRST, index.css LAST. This page used to load
+     them the other way round, and because output.css sets
+     "body { line-height: inherit }" it then overrode index.css's
+     "line-height: 1.6" — every control, the search box and all text on
+     location pages rendered at 1.5 instead of the 1.6 the rest of the site
+     uses, so these pages never lined up with /events or /listings. -->
+<link rel="stylesheet" href="/src/output.css">
 <link rel="stylesheet" href="/css/listings.css">
 <link rel="stylesheet" href="/css/events.css">
-<link rel="stylesheet" href="/src/output.css">
+<link rel="stylesheet" href="/css/index.css">
 
 <script type="application/ld+json">
 {
@@ -166,18 +173,23 @@ ${itemListSchema ? `<script type="application/ld+json">${JSON.stringify(itemList
 
 <div data-partial="header"></div>
 
-<div class="event-region-hero">
-    <h1>${escapeHtml(region.label)} Greek Events</h1>
-    <p>Festivals, church events, fundraisers, and gatherings across the ${escapeHtml(region.label)} suburbs — updated daily.</p>
-    <div class="relative mt-5 max-w-2xl mx-auto">
-        <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"><svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg></span>
-        <input type="text" id="eventSearchInput" placeholder="Search ${escapeHtml(region.label)} events..."
-            class="w-full pl-10 pr-4 py-3 rounded-lg focus:outline-none focus:ring-2 border-0"
-            style="color: #045093;">
-    </div>
-</div>
-
 <main data-region-slug="${escapeHtml(regionSlug)}">
+    <div class="max-w-7xl mx-auto px-4 pt-4">
+        <section class="events-hero" aria-label="${escapeHtml(region.label)} events hero">
+            <div class="events-hero-content">
+                <h1>${escapeHtml(region.label)} Greek Events</h1>
+                <h2>Festivals, church events, fundraisers, and gatherings across the ${escapeHtml(region.label)} suburbs — updated daily.</h2>
+            </div>
+        </section>
+
+        <div class="relative mb-4 max-w-2xl mx-auto">
+            <span class="absolute left-3 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"><svg class="w-4 h-4 text-gray-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg></span>
+            <input type="text" id="eventSearchInput" placeholder="Search ${escapeHtml(region.label)} events..."
+                class="w-full pl-10 pr-4 py-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2"
+                style="color: #045093; --tw-ring-color: #045093;">
+        </div>
+    </div>
+
 ${EVENTS_APP_SHELL_HTML}
 </main>
 

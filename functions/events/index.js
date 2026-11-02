@@ -41,8 +41,8 @@ import { EVENTS_APP_SHELL_HTML } from './_app-shell.js';
 // route, set the cache policy, and return the shell that js/events.js
 // then hydrates. events.html itself is kept in the repo as the
 // human-readable source of truth for the page's OUTER markup (head
-// metadata, hero, script tags) — the INNER interactive shell (toolbar,
-// filter panel, all four view containers) is imported from
+// metadata, hero, script tags) — the INNER interactive shell (controls,
+// filter panel, Map/Calendar panels, grid/list) is imported from
 // _app-shell.js rather than duplicated inline here, and is shared with
 // _render-region-page.js for the exact same reason — see that shared
 // file's own header comment. If events.html's outer markup is ever

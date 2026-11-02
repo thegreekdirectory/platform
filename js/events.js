@@ -32,13 +32,29 @@ or distribution of this code can result in legal action to the fullest extent pe
     let eventsSupabase = null;
     let allEvents = [];           // full fetched set for the current query scope
     let filteredEvents = [];      // after search/category/date/free-only filters
-    let currentView = localStorage.getItem('tgd_events_layout') || 'grid';
+    // Grid/List — the ONLY thing the wordless toggle controls, same as
+    // Listings' own currentView. Map and Calendar are no longer "views"
+    // that replace the grid/list: they are panels that open ABOVE it (see
+    // activePanel below), so the grid/list is always underneath either way
+    // — per "Calendar/map should appear like the map in listings, with
+    // either grid or list view events below."
+    let currentView = readStoredLayout();
+    // Which panel is open above the grid/list: null | 'map' | 'calendar'.
+    // Mutually exclusive — both open in the same slot, the way Listings
+    // has one #mapContainer in that slot.
+    let activePanel = null;
     let currentSort = 'soonest';
-    let calendarCursor = new Date();  // month currently shown in calendar view
+    let calendarCursor = new Date();  // month currently shown in the calendar panel
     let map = null;
     let markerClusterGroup = null;
     let loadMoreOffset = 0;
     const PAGE_SIZE = 24;
+    // True after a failed events fetch. applyFiltersAndRender() runs right
+    // after loadEvents() even on failure and would otherwise replace the
+    // error text with the generic "no events" one.
+    let loadFailed = false;
+    const EVENTS_LOAD_ERROR_MESSAGE = 'We could not load events right now. Please try again shortly.';
+    const EMPTY_STATE_DEFAULT_MESSAGE = 'Try adjusting your filters or check back soon.';
 
     // Split View state — mirrors js/listings.js's own module-level
     // variables of the same names/purpose (splitViewActive, userLocation,
@@ -58,17 +74,22 @@ or distribution of this code can result in legal action to the fullest extent pe
     let userLocationMarker = null;
     let splitUserLocationMarker = null;
 
-    // Sidebar-filters visibility for Grid/List views specifically —
-    // hidden by default per request; a "Filters" button + results count
-    // (mirroring Listings' own #resultsCount + desktopFilterToggleBtn
-    // pairing inside .desktop-content) shows when hidden, and a "Hide
-    // filters" control inside the sidebar itself hides it again. This is
-    // separate from whether the panel is currently sitting in the sidebar
-    // slot vs. the overlay slot (that's the view-driven placement handled
-    // by updateFilterPanelPosition() below) — this is specifically
-    // whether the Grid/List sidebar is shown or collapsed once it IS the
-    // relevant slot.
-    let sidebarFiltersVisible = false;
+    // Whether the ONE filter panel is showing — hidden by default, like
+    // Listings' filterPosition === 'top' (a "Filters" button shows when
+    // hidden; the sidebar's own swap control hides it again). A single
+    // flag no matter which home the panel currently has (sidebar vs.
+    // top-bar) — see updateFilterPanelPosition().
+    let filtersPanelVisible = false;
+
+    // Starred events — the same cookie-backed system as js/listings.js's
+    // starredListings, under its OWN cookie/sync names: listings and
+    // events both use UUID ids, but they are different tables, so one
+    // shared cookie would let an event star light up an unrelated listing
+    // (and vice versa).
+    const STARRED_EVENTS_COOKIE = 'starredEvents';
+    const STARRED_EVENTS_SYNC_KEY = 'tgd_starred_events_sync';
+    let starredEvents = [];
+    let viewingStarredOnly = false;
 
     // Regional-page mode — set as a global by _render-region-page.js
     // before this script loads. See that file's header comment.
@@ -99,7 +120,7 @@ or distribution of this code can result in legal action to the fullest extent pe
     // page, doesn't step through 15 individual filter toggles first).
     // -------------------------------------------------------------------
 
-    const QUERY_PARAM_KEYS = ['q', 'cat', 'when', 'from', 'to', 'free', 'avail', 'view', 'sort'];
+    const QUERY_PARAM_KEYS = ['q', 'cat', 'when', 'from', 'to', 'free', 'avail', 'view', 'layout', 'sort', 'starred'];
 
     function syncQueryParams() {
         const params = new URLSearchParams(window.location.search);
@@ -112,8 +133,18 @@ or distribution of this code can result in legal action to the fullest extent pe
         if (state.dateRange === 'custom' && state.customDateEnd) params.set('to', state.customDateEnd);
         if (state.freeOnly) params.set('free', '1');
         if (state.hideUnavailable) params.set('avail', '1');
-        if (currentView !== 'grid') params.set('view', currentView);
+        // ?view= keeps its original meaning for old links: the open panel
+        // when there is one (map/calendar), otherwise the layout when it
+        // isn't the default. ?layout= only exists to remember a List
+        // layout ALONGSIDE an open panel, which ?view= can't also carry.
+        if (activePanel) {
+            params.set('view', activePanel);
+            if (currentView !== 'grid') params.set('layout', currentView);
+        } else if (currentView !== 'grid') {
+            params.set('view', currentView);
+        }
         if (currentSort !== 'soonest') params.set('sort', currentSort);
+        if (viewingStarredOnly) params.set('starred', '1');
 
         const query = params.toString();
         const newUrl = window.location.pathname + (query ? `?${query}` : '');
@@ -138,7 +169,15 @@ or distribution of this code can result in legal action to the fullest extent pe
         state.hideUnavailable = params.get('avail') === '1';
 
         const view = params.get('view');
-        if (view && VIEW_CONTAINERS[view]) currentView = view;
+        const layout = params.get('layout');
+        if (view === 'grid' || view === 'list') currentView = view;
+        else if (view === 'map' || view === 'calendar') activePanel = view;
+        if (layout === 'grid' || layout === 'list') currentView = layout;
+
+        // Tentative: init() clears this again if nothing is actually
+        // starred (see the same step in js/listings.js's
+        // loadFiltersFromURL(), which passes suppressEmptyAlert).
+        viewingStarredOnly = params.get('starred') === '1';
 
         const sort = params.get('sort');
         if (sort && ['soonest', 'az', 'furthest'].includes(sort)) currentSort = sort;
@@ -188,9 +227,17 @@ or distribution of this code can result in legal action to the fullest extent pe
         const restoredCategories = readQueryParamsIntoState();
         restoreDomControlsFromState();
 
+        // Starred ids must be known BEFORE the first render so cards come
+        // out already starred. ?starred=1 with nothing starred (cookie
+        // cleared, or a shared link) falls back to the full list rather
+        // than an empty "starred" page.
+        loadStarredEvents();
+        if (viewingStarredOnly && starredEvents.length === 0) viewingStarredOnly = false;
+
         bindToolbarEvents();
         bindFilterPanelEvents();
-        setView(currentView, { skipSave: true });
+        bindStarredEventSync();
+        applyLayoutAndPanelState();
 
         await loadEvents();
         renderCategoryFilters(restoredCategories);
@@ -241,39 +288,64 @@ or distribution of this code can result in legal action to the fullest extent pe
 
             if (error) throw error;
             allEvents = Array.isArray(data) ? data : [];
+            loadFailed = false;
         } catch (err) {
             console.error('Failed to load events:', err);
             allEvents = [];
-            showEmptyState(true, 'We could not load events right now. Please try again shortly.');
+            loadFailed = true;
+            showEmptyState(true, EVENTS_LOAD_ERROR_MESSAGE);
         }
     }
 
     // -------------------------------------------------------------------
-    // Toolbar: filter button, view toggle, sort
+    // Controls: filters, grid/list toggle, Map/Calendar panel buttons,
+    // starred toggle, sort (the markup lives in _app-shell.js)
     // -------------------------------------------------------------------
 
     function bindToolbarEvents() {
-        const filterBtn = document.getElementById('eventFilterBtn');
-        const closeFilterBtn = document.getElementById('eventCloseFilterBtn');
-        const clearFiltersBtn = document.getElementById('eventClearFiltersBtn');
-        const showFiltersBtn = document.getElementById('eventShowFiltersBtn');
+        // Filters: the mobile controls row's button toggles, the desktop
+        // button beside the results count only ever shows the (hidden)
+        // sidebar, and the panel's own close (✕, top-bar home) / swap
+        // (⇄, sidebar home) controls hide it. All of them go through one
+        // setFiltersVisible() since a single flag drives .hidden no
+        // matter which home the panel is in right now (see
+        // updateFilterPanelPosition()).
+        document.getElementById('eventFilterBtn')?.addEventListener('click', () => setFiltersVisible(!filtersPanelVisible));
+        document.getElementById('eventDesktopFilterToggleBtn')?.addEventListener('click', () => setFiltersVisible(true));
+        document.getElementById('eventCloseFilterBtn')?.addEventListener('click', () => setFiltersVisible(false));
+        document.getElementById('eventHideFiltersBtn')?.addEventListener('click', () => setFiltersVisible(false));
+        document.getElementById('eventClearFiltersBtn')?.addEventListener('click', clearAllFilters);
+        document.getElementById('eventClearFiltersBtn2')?.addEventListener('click', clearAllFilters);
 
-        // All three buttons now go through the same
-        // setSidebarFiltersVisible() — since sidebarFiltersVisible
-        // drives .hidden identically whether the panel is currently in
-        // the sidebar slot or the overlay slot (see
-        // updateFilterPanelPosition() below), there's no need to branch
-        // by which slot the panel happens to be in right now the way an
-        // earlier version of this function did.
-        filterBtn?.addEventListener('click', () => setSidebarFiltersVisible(!sidebarFiltersVisible));
-        closeFilterBtn?.addEventListener('click', () => setSidebarFiltersVisible(false));
-        showFiltersBtn?.addEventListener('click', () => setSidebarFiltersVisible(true));
-        clearFiltersBtn?.addEventListener('click', clearAllFilters);
-
-        const viewToggle = document.getElementById('eventsViewToggle');
-        viewToggle?.querySelectorAll('button[data-view]').forEach((btn) => {
-            btn.addEventListener('click', () => setView(btn.dataset.view));
+        // Grid/List — each button exists twice (mobile controls row +
+        // desktop controls row), kept in sync by syncControlStates(),
+        // exactly like Listings' gridViewBtn/gridViewBtn2 pairs.
+        ['eventGridViewBtn', 'eventGridViewBtn2'].forEach((id) => {
+            document.getElementById(id)?.addEventListener('click', () => setLayout('grid'));
         });
+        ['eventListViewBtn', 'eventListViewBtn2'].forEach((id) => {
+            document.getElementById(id)?.addEventListener('click', () => setLayout('list'));
+        });
+
+        // Map / Calendar panels.
+        ['eventMapBtn', 'eventMapBtnDesktop'].forEach((id) => {
+            document.getElementById(id)?.addEventListener('click', () => togglePanel('map'));
+        });
+        ['eventCalendarBtn', 'eventCalendarBtnDesktop'].forEach((id) => {
+            document.getElementById(id)?.addEventListener('click', () => togglePanel('calendar'));
+        });
+
+        // Starred-events toggle (mobile + desktop copies).
+        ['eventStarToggleBtnMobile', 'eventStarToggleBtnDesktop'].forEach((id) => {
+            document.getElementById(id)?.addEventListener('click', () => toggleStarredEventsView());
+        });
+
+        // The panel changes homes at the 1024px breakpoint (sidebar at
+        // >=1024px, top-bar below), so crossing it live — rotating a
+        // tablet, resizing a desktop window — has to re-place it.
+        const desktopQuery = window.matchMedia('(min-width: 1024px)');
+        if (desktopQuery.addEventListener) desktopQuery.addEventListener('change', () => updateFilterPanelPosition());
+        else if (desktopQuery.addListener) desktopQuery.addListener(() => updateFilterPanelPosition());
 
         // Map controls — same three buttons/behaviors as
         // js/listings.js's own locateBtn/resetMapBtn/splitViewBtn.
@@ -364,6 +436,7 @@ or distribution of this code can result in legal action to the fullest extent pe
                 });
                 if (!error && Array.isArray(data)) {
                     allEvents = data;
+                    loadFailed = false;
                     applyFiltersAndRender();
                 }
             }, 300);
@@ -398,7 +471,7 @@ or distribution of this code can result in legal action to the fullest extent pe
     }
 
     // -------------------------------------------------------------------
-    // View switching
+    // Subscribe menu (toolbar "Subscribe" button -> calendar feed)
     // -------------------------------------------------------------------
 
     const FEED_URL = 'https://thegreekdirectory.org/events/feed.ics';
@@ -478,122 +551,229 @@ or distribution of this code can result in legal action to the fullest extent pe
         });
     }
 
-    const VIEW_CONTAINERS = {
+    // -------------------------------------------------------------------
+    // Layout (grid/list) + panels (map/calendar) + filter panel
+    //
+    // Modeled on js/listings.js, which has exactly this shape: setView()
+    // for the wordless grid/list toggle, toggleMap() for the one panel
+    // that opens above the results, toggleFilters() / checkFilterPosition()
+    // for the filters. Events has TWO panels (Map and Calendar) where
+    // Listings has one, so the panel is a small state machine
+    // (activePanel) rather than a boolean.
+    // -------------------------------------------------------------------
+
+    const LAYOUT_CONTAINERS = {
         grid: 'eventGridView',
         list: 'eventListView',
-        calendar: 'eventCalendarContainer',
-        map: 'eventMapContainer',
     };
 
-    function setView(view, opts) {
-        opts = opts || {};
-        currentView = view;
-        if (!opts.skipSave) localStorage.setItem('tgd_events_layout', view);
+    const PANEL_CONTAINERS = {
+        map: 'eventMapContainer',
+        calendar: 'eventCalendarContainer',
+    };
 
-        // Split View is a sub-mode of Map view specifically (its own
-        // toggle button lives inside the map's own controls, same as
-        // Listings' splitViewBtn). Switching to Grid/List/Calendar while
-        // it's active needs to close it first — same safeguard as
-        // js/listings.js's toggleMap() calling toggleSplitView() when
-        // splitViewActive is true — otherwise its DOM/Leaflet instance
-        // stays alive underneath whatever view gets shown instead
-        // (VIEW_CONTAINERS below doesn't know about
-        // #eventSplitViewContainer at all, so nothing would ever hide it
-        // on its own). Switching TO 'map' while already in Split View is
-        // fine as-is: re-clicking Map shouldn't kick the user out of it.
-        if (splitViewActive && view !== 'map') {
-            toggleSplitEventsView();
+    // 'grid' | 'list' from localStorage. Anything else — including the
+    // 'calendar' / 'map' values the earlier four-button toggle also saved
+    // under this same key — falls back to grid: those two are panels now,
+    // not layouts, and must never be restored as one. Wrapped in
+    // try/catch because storage access can throw (private modes, blocked
+    // storage) and this runs while the script is still initialising.
+    function readStoredLayout() {
+        try {
+            return localStorage.getItem('tgd_events_layout') === 'list' ? 'list' : 'grid';
+        } catch (e) {
+            return 'grid';
+        }
+    }
+
+    // Same 1024px breakpoint as Tailwind's lg: and css/listings.css's
+    // desktop block, i.e. where Listings' own mobile controls row hands
+    // over to its desktop controls row.
+    function isDesktopWidth() {
+        return window.matchMedia('(min-width: 1024px)').matches;
+    }
+
+    // Grid <-> List. Only touches the layout; whatever panel is open stays
+    // open above it.
+    function setLayout(view, opts) {
+        opts = opts || {};
+        currentView = view === 'list' ? 'list' : 'grid';
+        if (!opts.skipSave) {
+            try { localStorage.setItem('tgd_events_layout', currentView); } catch (e) { /* storage unavailable — layout simply isn't remembered */ }
         }
 
-        Object.entries(VIEW_CONTAINERS).forEach(([key, id]) => {
-            const el = document.getElementById(id);
-            if (el) el.classList.toggle('hidden', key !== view);
-        });
-
-        document.querySelectorAll('#eventsViewToggle button[data-view]').forEach((btn) => {
-            btn.classList.toggle('active', btn.dataset.view === view);
-        });
-
-        updateFilterPanelPosition(view);
-
-        if (view === 'grid') renderGrid();
-        if (view === 'list') renderList();
-        if (view === 'calendar') renderCalendar();
-        if (view === 'map') renderMap();
+        applyLayoutState();
+        if (currentView === 'grid') renderGrid();
+        else renderList();
 
         if (!opts.skipSave) syncQueryParams();
     }
 
-    // Moves the single #eventFilterPanel between its two DOM slots
-    // depending on the active view — sidebar slot for Grid/List (the
-    // default), back to its original overlay slot for Calendar/Map.
-    // See functions/events/_app-shell.js's own comments on
-    // #eventFilterPanelOverlaySlot / #eventDesktopFiltersSlot for why
-    // this moves ONE panel rather than keeping two synced copies.
-    // Actually reparenting the panel (not just a CSS class flip) is
-    // what's needed here specifically: a CSS-only "hide it here, show a
-    // copy there" would require the two-copy approach this deliberately
-    // avoids, since there's only one #eventFilterPanel in the DOM.
-    // Safe to call on every view change, including grid<->list (an
-    // no-op moveTo when already in the target slot — appendChild on a
-    // node already in that exact position is a harmless no-op, not a
-    // detach/reattach that would lose scroll position or focus).
+    function applyLayoutState() {
+        Object.entries(LAYOUT_CONTAINERS).forEach(([key, id]) => {
+            document.getElementById(id)?.classList.toggle('hidden', key !== currentView);
+        });
+        syncControlStates();
+    }
+
+    // Map / Calendar buttons: press once to open, press again to close.
+    // Pressing the OTHER panel's button switches straight over.
+    function togglePanel(panel) {
+        setActivePanel(activePanel === panel ? null : panel);
+    }
+
+    function setActivePanel(panel, opts) {
+        opts = opts || {};
+        if (panel !== 'map' && panel !== 'calendar') panel = null;
+
+        // Split View is a sub-mode of the Map panel (its toggle lives in
+        // the map's own controls, same as Listings' splitViewBtn).
+        // Anything that leaves the map — closing it, or switching to
+        // Calendar — has to close Split View first: Split View hides the
+        // grid/list layout and the map panel's container, and nothing
+        // below knows how to bring them back on its own. Same safeguard as
+        // js/listings.js's toggleMap() calling toggleSplitView() when
+        // splitViewActive is true. Re-selecting 'map' while Split View is
+        // already open is left alone — it shouldn't kick the visitor out.
+        if (splitViewActive && panel !== 'map') setSplitView(false, { restoreMapPanel: false });
+
+        activePanel = panel;
+        Object.entries(PANEL_CONTAINERS).forEach(([key, id]) => {
+            const el = document.getElementById(id);
+            if (!el) return;
+            // The map's own container stays hidden while Split View is
+            // showing its own map instead.
+            const show = key === panel && !(key === 'map' && splitViewActive);
+            el.classList.toggle('hidden', !show);
+        });
+
+        // Below 1024px the filter panel's home (the top-bar slot) is the
+        // very same strip Map/Calendar open into, so the two can't both
+        // be open — Listings' toggleFilters() closes the map for the same
+        // reason (and toggleMap() closes the filter panel). At >=1024px
+        // the panel is a sidebar BESIDE the results, and during Split View
+        // it sits above the split container, so neither collides.
+        if (panel && !isDesktopWidth() && !splitViewActive && filtersPanelVisible) {
+            filtersPanelVisible = false;
+        }
+        updateFilterPanelPosition();
+
+        // Rendered only after the container is un-hidden above: Leaflet
+        // must initialise against a visible, sized element.
+        if (panel === 'map' && !splitViewActive) renderMap();
+        if (panel === 'calendar') renderCalendar();
+
+        if (!opts.skipSave) syncQueryParams();
+    }
+
+    // First paint: put every container/button into the state the URL and
+    // localStorage asked for. Nothing is rendered here (no events are
+    // loaded yet) — init()'s applyFiltersAndRender() renders layout and
+    // open panel once the data arrives.
+    function applyLayoutAndPanelState() {
+        applyLayoutState();
+        setActivePanel(activePanel, { skipSave: true });
+    }
+
+    // Moves the single #eventFilterPanel between its two DOM slots and
+    // owns everything that follows from where it is and whether it's
+    // showing. See _app-shell.js's FILTER PANEL comment for why this is
+    // ONE panel moved between slots rather than two synced copies.
     //
-    // Also OWNS the panel's .hidden class directly on every call, driven
-    // by ONE shared sidebarFiltersVisible flag regardless of which slot
-    // the panel currently occupies — rather than trusting whatever
-    // .hidden state happened to be left over from a different view's
-    // interaction. Confirmed root cause of a reported bug ("switching
-    // between Calendar/Map to another mode with filters open... filters
-    // disappear but there's still a big space that won't go away"): the
-    // panel's visibility used to depend on .hidden's state from a
-    // separate code path (the mobile overlay's Filters/✕ buttons), which
-    // could easily be stale relative to whichever slot the panel had
-    // just moved into. Using one flag for both contexts also directly
-    // satisfies "filters should be kept on when switching" — opening
-    // Filters in Map and switching to Grid (or vice versa) keeps the
-    // same open/closed state rather than each view tracking it
-    // separately and disagreeing with each other.
-    function updateFilterPanelPosition(view) {
+    //   >=1024px, not Split View -> #eventDesktopFiltersSlot: the left
+    //     sidebar beside the results (Listings' #desktopFilterPanel).
+    //   otherwise                -> #eventFilterPanelOverlaySlot: the
+    //     full-width top-bar strip (Listings' #filterPanel), which is the
+    //     only place that still exists while Split View has hidden the
+    //     whole grid/list layout (sidebar slot included).
+    //
+    // Re-parenting (not a CSS-only flip) is what makes one panel work for
+    // both homes; appendChild on a node already in the target slot is
+    // skipped so a no-op call never detaches the panel (which would lose
+    // scroll position and input focus).
+    //
+    // Also OWNS the panel's .hidden class on every call, driven by the ONE
+    // filtersPanelVisible flag — never trusting .hidden state left over
+    // from a different code path. (The earlier version tracked visibility
+    // separately per view, which is what produced the reported "filters
+    // disappear but the big space won't go away" bug.) One flag also means
+    // "filters stay as you left them" when switching layout or panel.
+    function updateFilterPanelPosition() {
         const panel = document.getElementById('eventFilterPanel');
         const sidebarSlot = document.getElementById('eventDesktopFiltersSlot');
         const overlaySlot = document.getElementById('eventFilterPanelOverlaySlot');
         if (!panel || !sidebarSlot || !overlaySlot) return;
 
-        const wantsSidebar = (view === 'grid' || view === 'list');
-        const targetSlot = wantsSidebar ? sidebarSlot : overlaySlot;
+        const inSidebar = isDesktopWidth() && !splitViewActive;
+        const targetSlot = inSidebar ? sidebarSlot : overlaySlot;
         if (panel.parentElement !== targetSlot) {
             targetSlot.appendChild(panel);
         }
 
-        panel.classList.toggle('hidden', !sidebarFiltersVisible);
+        panel.classList.toggle('hidden', !filtersPanelVisible);
 
-        // .events-sidebar-mode on <body> now means "the sidebar is
-        // actually visible right now" (view is Grid/List AND the user
-        // hasn't hidden it) — used by css/events.css to hide BOTH the
-        // main toolbar's #eventFilterBtn (redundant once the sidebar
-        // itself is on screen) and the new .events-desktop-filters-row
-        // "Filters" button (same reasoning: don't show two different
-        // ways to reach the same panel at once).
-        document.body.classList.toggle('events-sidebar-mode', wantsSidebar && sidebarFiltersVisible);
+        // The sidebar column only exists while it actually holds a visible
+        // panel — an empty-but-present 300px column was the old "big space
+        // that won't go away". These three classes are exactly what
+        // Listings' checkFilterPosition() toggles for its own sidebar:
+        // .hidden on the column, .with-left-filters on the layout (turns
+        // on the flex row in css/listings.css), and the 2-column result
+        // grid that fits the narrower content column.
+        const sidebarShowing = inSidebar && filtersPanelVisible;
+        sidebarSlot.classList.toggle('hidden', !sidebarShowing);
+        document.getElementById('eventDesktopLayout')?.classList.toggle('with-left-filters', sidebarShowing);
+        document.getElementById('eventsContainer')?.classList.toggle('listings-2-col', sidebarShowing);
+        // css/events.css hides the desktop Filters button while this is set.
+        document.body.classList.toggle('events-sidebar-mode', sidebarShowing);
 
-        // .events-desktop-filters-row's own Filters button + results
-        // count are the way IN when the sidebar is hidden — only
-        // relevant/shown for Grid/List (see the CSS's own 1024px gate
-        // for the width condition); toggled here so it doesn't need its
-        // own separate call site.
-        const desktopRow = document.getElementById('eventDesktopFiltersRow');
-        if (desktopRow) desktopRow.classList.toggle('hidden', !wantsSidebar);
+        syncControlStates();
     }
 
-    // Shows or hides the filter panel — used for BOTH the Grid/List
-    // sidebar and the Calendar/Map overlay, since both are now driven by
-    // the same sidebarFiltersVisible flag (see updateFilterPanelPosition
-    // above). Called from #eventShowFiltersBtn / #eventFilterBtn (always
-    // shows) and #eventCloseFilterBtn (always hides).
-    function setSidebarFiltersVisible(visible) {
-        sidebarFiltersVisible = visible;
-        updateFilterPanelPosition(currentView);
+    function setFiltersVisible(visible) {
+        // Below 1024px opening the filters closes Map/Calendar — they
+        // share the strip (see setActivePanel()). Not during Split View,
+        // where the panel sits above the split container.
+        if (visible && !isDesktopWidth() && !splitViewActive && activePanel) {
+            setActivePanel(null);
+        }
+        filtersPanelVisible = visible;
+        updateFilterPanelPosition();
+    }
+
+    // Reflects state onto every control that shows it. Each toggle exists
+    // twice (mobile row + desktop row), so this is the one place that keeps
+    // the pairs identical, the way Listings' setView() and
+    // syncStarredButtonsVisualState() do for theirs.
+    function syncControlStates() {
+        [['eventGridViewBtn', 'eventGridViewBtn2', 'grid'], ['eventListViewBtn', 'eventListViewBtn2', 'list']].forEach(([mobileId, desktopId, view]) => {
+            const on = currentView === view;
+            [mobileId, desktopId].forEach((id) => {
+                const btn = document.getElementById(id);
+                if (!btn) return;
+                // Same className strings js/listings.js's setView() writes.
+                btn.className = on ? 'p-2 rounded bg-white shadow-sm active' : 'p-2 rounded';
+                btn.setAttribute('aria-pressed', String(on));
+            });
+        });
+
+        [['map', 'eventMapBtn', 'eventMapBtnDesktop'], ['calendar', 'eventCalendarBtn', 'eventCalendarBtnDesktop']].forEach(([panel, mobileId, desktopId]) => {
+            const on = activePanel === panel;
+            [mobileId, desktopId].forEach((id) => {
+                const btn = document.getElementById(id);
+                if (!btn) return;
+                btn.classList.toggle('active', on);
+                btn.setAttribute('aria-pressed', String(on));
+            });
+        });
+
+        ['eventStarToggleBtnMobile', 'eventStarToggleBtnDesktop'].forEach((id) => {
+            const btn = document.getElementById(id);
+            if (!btn) return;
+            btn.classList.toggle('starred', viewingStarredOnly);
+            btn.setAttribute('aria-pressed', String(viewingStarredOnly));
+        });
+
+        document.getElementById('eventFilterBtn')?.setAttribute('aria-expanded', String(filtersPanelVisible));
     }
 
     // -------------------------------------------------------------------
@@ -643,7 +823,11 @@ or distribution of this code can result in legal action to the fullest extent pe
     }
 
     function applyFiltersAndRender() {
+        const starredSet = new Set(starredEvents);
         filteredEvents = allEvents.filter((event) => {
+            // The starred toggle narrows whatever the other filters allow
+            // (an AND, same as js/listings.js's matchesStarred).
+            if (viewingStarredOnly && !starredSet.has(String(event.id))) return false;
             if (state.search) {
                 const haystack = [event.title, event.tagline, event.category, event.city]
                     .filter(Boolean)
@@ -667,13 +851,28 @@ or distribution of this code can result in legal action to the fullest extent pe
         loadMoreOffset = 0;
         updateFilterCount();
         updateResultsCount();
-        showEmptyState(filteredEvents.length === 0);
+        showEmptyState(
+            filteredEvents.length === 0,
+            loadFailed ? EVENTS_LOAD_ERROR_MESSAGE
+                : viewingStarredOnly ? 'No starred events match your current filters.'
+                : undefined
+        );
 
+        // The grid/list always renders — the open panel sits ABOVE it,
+        // never instead of it. Split View hides the grid/list and the plain
+        // map panel and shows its own list + map, so those get refreshed
+        // instead (they were previously left stale when a filter changed
+        // while Split View was open).
         if (currentView === 'grid') renderGrid();
-        else if (currentView === 'list') renderList();
-        else if (currentView === 'calendar') renderCalendar();
-        else if (currentView === 'map') renderMap();
+        else renderList();
+        if (activePanel === 'calendar') renderCalendar();
+        if (activePanel === 'map' && !splitViewActive) renderMap();
+        if (splitViewActive) {
+            renderSplitEventsListings();
+            updateSplitEventsMapMarkers();
+        }
 
+        syncControlStates();
         syncQueryParams();
     }
 
@@ -682,39 +881,36 @@ or distribution of this code can result in legal action to the fullest extent pe
             + (state.freeOnly ? 1 : 0)
             + (state.hideUnavailable ? 1 : 0)
             + (state.dateRange !== 'all' ? 1 : 0);
-        const badge = document.getElementById('eventFilterCount');
-        if (!badge) return;
-        badge.textContent = String(count);
-        badge.classList.toggle('hidden', count === 0);
+        // One badge on the mobile Filters button, one on the desktop one.
+        document.querySelectorAll('.event-filter-count').forEach((badge) => {
+            badge.textContent = String(count);
+            badge.classList.toggle('hidden', count === 0);
+        });
     }
 
+    // Same wording as js/listings.js's updateResultsCount(): "N listings
+    // found" / "N starred listings", here with events (and, on a regional
+    // page, the region in the spot Listings puts the selected category).
     function updateResultsCount() {
         const n = filteredEvents.length;
-        const label = `${n} event${n === 1 ? '' : 's'}${REGION ? ` in ${REGION.label}` : ''}`;
-        // #eventResultsCount (the main toolbar's mobile-width count) was
-        // removed from the markup — listings.html has no results count in
-        // its own mobile toolbar either, only in its desktop
-        // #normalViewControls, which #eventDesktopResultsCount below
-        // already mirrors ("# events found... to the left of the filters
-        // button" — that pairing lives in .desktop-content on Listings,
-        // not its mobile row). getElementById here now always returns
-        // null and the assignment is skipped via the existing guard —
-        // left in rather than removed outright in case a future toolbar
-        // revision reintroduces that element.
+        const noun = n === 1 ? 'event' : 'events';
+        const label = viewingStarredOnly
+            ? `${n} starred ${noun}`
+            : `${n} ${noun} found${REGION ? ` in ${REGION.label}` : ''}`;
         const el = document.getElementById('eventResultsCount');
         if (el) el.textContent = label;
-        const desktopEl = document.getElementById('eventDesktopResultsCount');
-        if (desktopEl) desktopEl.textContent = label;
     }
 
     function showEmptyState(show, customMessage) {
         const empty = document.getElementById('eventsEmptyState');
         if (!empty) return;
         empty.classList.toggle('hidden', !show);
-        if (show && customMessage) {
-            const msgEl = empty.querySelector('p:last-child');
-            if (msgEl) msgEl.textContent = customMessage;
-        }
+        if (!show) return;
+        // Always (re)set the sub-message: with no custom text it goes back
+        // to the default, so a message set for one situation (starred
+        // view, load failure) can't linger into the next.
+        const msgEl = empty.querySelector('p:last-child');
+        if (msgEl) msgEl.textContent = customMessage || EMPTY_STATE_DEFAULT_MESSAGE;
     }
 
     // -------------------------------------------------------------------
@@ -807,6 +1003,23 @@ or distribution of this code can result in legal action to the fullest extent pe
         return badges;
     }
 
+    // The per-event star — same markup as js/listings.js's .star-button
+    // (the circle/blur/hover/starred styling in css/listings.css, already
+    // loaded here), keyed on data-event-id instead of data-listing-id.
+    // Always emitted as a SIBLING of the card's link, never inside it: a
+    // <button> nested in an <a> is invalid HTML, and the click would also
+    // navigate. The one delegated click handler in bindStarredEventSync()
+    // handles every instance (grid card, list row, split item, calendar
+    // day detail), so nothing here carries an inline onclick. aria-pressed
+    // (not a changing label) carries the on/off state for screen readers.
+    function buildEventStarButtonHtml(eventId, extraStyle, iconPx) {
+        const on = starredEvents.includes(String(eventId));
+        const iconStyle = iconPx ? ` style="width: ${iconPx}px; height: ${iconPx}px;"` : '';
+        return `<button type="button" class="star-button${on ? ' starred' : ''}" data-event-id="${escapeAttr(eventId)}" aria-label="Star event" aria-pressed="${on}"${extraStyle ? ` style="${extraStyle}"` : ''}>` +
+            `<svg class="star-icon"${iconStyle} viewBox="0 0 24 24"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>` +
+            `</button>`;
+    }
+
     function buildEventCardHtml(event) {
         const { dateLabel, timeLabel } = formatCardDateTime(event);
         const badges = buildEventBadges(event);
@@ -831,15 +1044,22 @@ or distribution of this code can result in legal action to the fullest extent pe
         // rendering with NO shadow at all previously. Badges still live
         // inside the <a> (not as an outside sibling) for the same
         // stacking-context reason as before — that fix stays, just
-        // applied to the new markup shape.
+        // applied to the new markup shape. The star button is the one
+        // addition since: Listings' card carries it as a sibling placed
+        // before the link (position:absolute, top-right of the card, which
+        // is the image's top-right corner), so this does too — and the
+        // badge row is capped 56px short of the right edge (a 36px star +
+        // its 10px inset + a 10px gap) so a card with several badges can
+        // never run underneath it.
         return `
         <div class="bg-white rounded-lg shadow hover:shadow-lg transition-shadow overflow-hidden block relative hover-bounce listing-card-hover">
+            ${buildEventStarButtonHtml(event.id)}
             <a href="/event/${escapeAttr(event.slug || '')}" class="block">
                 <div class="h-48 bg-gray-200 relative">
                     ${event.poster_image
                         ? `<img src="${escapeAttr(event.poster_image)}" alt="${escapeAttr(event.title || '')}" class="w-full h-full object-cover" loading="lazy">`
                         : `<div class="w-full h-full flex items-center justify-center text-gray-400 event-card-poster-placeholder"><span>${escapeHtml(event.category || 'Event')}</span></div>`}
-                    ${badges.length ? `<div class="absolute top-2 left-2 flex gap-2 flex-wrap">${badges.join('')}</div>` : ''}
+                    ${badges.length ? `<div class="absolute top-2 left-2 flex gap-2 flex-wrap" style="right: 56px;">${badges.join('')}</div>` : ''}
                 </div>
                 <div class="p-4">
                     <span class="event-card-date">${escapeHtml(dateLabel)}${timeLabel ? ` \u00b7 ${escapeHtml(timeLabel)}` : ''}</span>
@@ -872,21 +1092,31 @@ or distribution of this code can result in legal action to the fullest extent pe
         if (loadMoreBtn) loadMoreBtn.classList.toggle('hidden', loadMoreOffset >= filteredEvents.length);
     }
 
+    // The row used to BE the link (<a class="... event-list-row">); it is
+    // now a wrapper <div> with the link inside, because the star button has
+    // to be a sibling of the link rather than inside it (see
+    // buildEventStarButtonHtml). Same classes on the wrapper, plus
+    // relative + pr-12 so the star (top-right, same 12px inset as
+    // Listings' own list-card star) sits in reserved padding instead of on
+    // top of the Free chip.
     function buildEventListRowHtml(event) {
         const { dateLabel, timeLabel } = formatCardDateTime(event);
         const locationLabel = [event.city, event.state].filter(Boolean).join(', ');
         return `
-        <a class="flex items-center gap-4 bg-white rounded-lg p-3 card-shadow hover-bounce event-list-row" href="/event/${escapeAttr(event.slug || '')}">
-            ${event.poster_image
-                ? `<img src="${escapeAttr(event.poster_image)}" alt="${escapeAttr(event.title || '')}" class="w-16 h-16 rounded-lg object-cover flex-shrink-0" loading="lazy">`
-                : `<div class="w-16 h-16 rounded-lg flex-shrink-0" style="background:linear-gradient(135deg,#045093,#0a6bc2);"></div>`}
-            <div class="min-w-0 flex-1">
-                <div class="text-xs font-bold" style="color:#045093;">${escapeHtml(dateLabel)}${timeLabel ? ` \u00b7 ${escapeHtml(timeLabel)}` : ''}</div>
-                <div class="text-sm font-bold text-gray-900 truncate">${escapeHtml(event.title || '')}</div>
-                ${locationLabel ? `<div class="text-xs text-gray-500 truncate">${escapeHtml(event.custom_venue_name || locationLabel)}</div>` : ''}
-            </div>
-            ${event.is_free ? '<span class="event-price-chip event-price-free flex-shrink-0">Free</span>' : ''}
-        </a>`;
+        <div class="relative flex items-center gap-4 bg-white rounded-lg p-3 pr-12 card-shadow hover-bounce event-list-row">
+            ${buildEventStarButtonHtml(event.id, 'top: 12px; right: 12px;')}
+            <a class="flex items-center gap-4 min-w-0 flex-1" href="/event/${escapeAttr(event.slug || '')}">
+                ${event.poster_image
+                    ? `<img src="${escapeAttr(event.poster_image)}" alt="${escapeAttr(event.title || '')}" class="w-16 h-16 rounded-lg object-cover flex-shrink-0" loading="lazy">`
+                    : `<div class="w-16 h-16 rounded-lg flex-shrink-0" style="background:linear-gradient(135deg,#045093,#0a6bc2);"></div>`}
+                <div class="min-w-0 flex-1">
+                    <div class="text-xs font-bold" style="color:#045093;">${escapeHtml(dateLabel)}${timeLabel ? ` \u00b7 ${escapeHtml(timeLabel)}` : ''}</div>
+                    <div class="text-sm font-bold text-gray-900 truncate">${escapeHtml(event.title || '')}</div>
+                    ${locationLabel ? `<div class="text-xs text-gray-500 truncate">${escapeHtml(event.custom_venue_name || locationLabel)}</div>` : ''}
+                </div>
+                ${event.is_free ? '<span class="event-price-chip event-price-free flex-shrink-0">Free</span>' : ''}
+            </a>
+        </div>`;
     }
 
     // -------------------------------------------------------------------
@@ -1168,9 +1398,9 @@ or distribution of this code can result in legal action to the fullest extent pe
     // js/listings.js keeps for the same reason: the plain map and the
     // split map are two independent Leaflet instances that can both be
     // alive if a visitor opens Split View without first closing the
-    // plain map view (setView() hides the container but doesn't tear
-    // down the Leaflet instance itself — see renderMap()'s own "already
-    // initialized" guard below).
+    // plain map panel (closing the panel hides its container but doesn't
+    // tear down the Leaflet instance itself — see renderMap()'s own
+    // "already initialized" guard below).
     function addEventsUserLocationMarker(mapInstance, isSplit) {
         if (!mapInstance || !userLocation) return;
         const existing = isSplit ? splitUserLocationMarker : userLocationMarker;
@@ -1271,25 +1501,56 @@ or distribution of this code can result in legal action to the fullest extent pe
     // Split View — mirrors js/listings.js's toggleSplitView() /
     // renderSplitViewListings() / updateSplitMapMarkers() / initSplitMap().
     //
-    // Deliberately NOT ported alongside these: the star/favorite button
-    // (events have no starred-events system), the distance/radius-based
-    // map filtering (selectedRadius / mapVisibleRadiusMiles /
-    // calculateDistance — events have no radius filter, confirmed
-    // earlier, so there is nothing for that filtering to be driven by),
-    // and the "closest to me" sort option's automatic
+    // The star button IS ported (see buildEventStarButtonHtml and the
+    // starred-events section below), as is the split header's own
+    // Filters button + sort select. Deliberately still NOT ported: the
+    // distance/radius-based map filtering (selectedRadius /
+    // mapVisibleRadiusMiles / calculateDistance — events have no radius
+    // filter, confirmed earlier, so there is nothing for that filtering
+    // to be driven by), and the "closest to me" sort option's automatic
     // requestPreciseLocation('closest-sort') trigger (same reason — no
     // distance-based sort exists for events to wire that into). Every
     // event within the current filtered set is always shown on the
     // split map, same as the plain map view already does.
+    //
+    // Split View hides the same trio Listings' toggleSplitView() hides —
+    // the controls row, the grid/list, and the plain map panel — and shows
+    // its own list + map in their place. Because that takes the whole
+    // grid/list layout (the sidebar column included) off screen, the
+    // filter panel falls back to its top-bar home above the split
+    // container (see updateFilterPanelPosition()), reached through the
+    // split header's own Filters button.
     // -------------------------------------------------------------------
 
-    function toggleSplitEventsView() {
-        splitViewActive = !splitViewActive;
+    // Split View's own state machine. toggleSplitEventsView() below is the
+    // button-facing toggle; setActivePanel() calls this directly with
+    // restoreMapPanel:false when something is LEAVING the map (closing it
+    // or switching to Calendar), since in that case the plain map panel
+    // must stay hidden rather than be shown for an instant first.
+    //
+    // Entering closes the filter panel and remembers whether it was open
+    // (Listings does the same: its split view closes the top panel, and
+    // its sidebar reappears afterwards on its own), so leaving restores it
+    // exactly as it was.
+    let filtersVisibleBeforeSplit = false;
+
+    function setSplitView(active, opts) {
+        opts = opts || {};
+        const restoreMapPanel = opts.restoreMapPanel !== false;
+        if (active === splitViewActive) return;
+
+        const splitContainer = document.getElementById('eventSplitViewContainer');
+        if (active && !splitContainer) return;
+
+        splitViewActive = active;
+        const normalViewIds = ['eventNormalViewControls', 'eventNormalViewListings'];
 
         if (splitViewActive) {
+            filtersVisibleBeforeSplit = filtersPanelVisible;
+            filtersPanelVisible = false;
+
             document.getElementById('eventMapContainer')?.classList.add('hidden');
-            const splitContainer = document.getElementById('eventSplitViewContainer');
-            if (!splitContainer) { splitViewActive = false; return; }
+            normalViewIds.forEach((id) => document.getElementById(id)?.classList.add('hidden'));
             splitContainer.classList.remove('hidden');
             splitContainer.className = 'split-view-container';
             splitContainer.style.position = 'relative';
@@ -1297,7 +1558,17 @@ or distribution of this code can result in legal action to the fullest extent pe
             splitContainer.innerHTML = `
                 <div class="split-view-listings">
                     <div class="mb-3 flex items-center justify-between px-2">
-                        <p class="text-sm text-gray-600" id="splitEventResultsCount"></p>
+                        <div class="flex items-center gap-2">
+                            <p class="text-sm text-gray-600" id="splitEventResultsCount"></p>
+                            <button id="eventSplitFiltersBtn" class="flex items-center gap-1.5 px-3 py-1.5 bg-white border border-gray-300 rounded-lg shadow-sm text-sm font-medium text-gray-700 hover:bg-gray-50">
+                                <svg class="w-4 h-4 text-gray-500" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-6-6m2-5a7 7 0 11-14 0 7 7 0 0114 0z"/></svg> Filters
+                            </button>
+                        </div>
+                        <select id="splitEventSortSelect" class="text-sm border border-gray-300 rounded-lg px-3 py-2">
+                            <option value="soonest">Soonest</option>
+                            <option value="az">A-Z</option>
+                            <option value="furthest">Furthest Out</option>
+                        </select>
                     </div>
                     <div id="splitEventsListContainer"></div>
                 </div>
@@ -1327,22 +1598,59 @@ or distribution of this code can result in legal action to the fullest extent pe
             document.getElementById('splitEventResetMapBtn')?.addEventListener('click', () => {
                 if (window.splitEventsMap) window.splitEventsMap.setView([41.8781, -87.6298], 9);
             });
+            document.getElementById('eventSplitFiltersBtn')?.addEventListener('click', () => setFiltersVisible(!filtersPanelVisible));
 
+            // The split header's sort select mirrors the main one (Listings'
+            // #splitSortSelect <-> #sortSelect pairing): changing it updates
+            // the shared sort and re-runs the filters.
+            const splitSort = document.getElementById('splitEventSortSelect');
+            if (splitSort) {
+                splitSort.value = currentSort;
+                splitSort.addEventListener('change', () => {
+                    currentSort = splitSort.value;
+                    const mainSort = document.getElementById('eventSortSelect');
+                    if (mainSort) mainSort.value = currentSort;
+                    applyFiltersAndRender();
+                });
+            }
+
+            updateFilterPanelPosition();
             renderSplitEventsListings();
             initSplitEventsMap();
         } else {
-            const splitContainer = document.getElementById('eventSplitViewContainer');
             if (splitContainer) {
-                splitContainer.classList.add('hidden');
+                // Reset to the container's ORIGINAL class list (just "hidden"),
+                // not merely add "hidden" on top of what's there:
+                // css/listings.css gives .split-view-container
+                // "display:flex; height:calc(100vh - 200px)", and as it loads
+                // after src/output.css it out-ranks .hidden (same
+                // specificity, later wins) — so "split-view-container hidden"
+                // stays on screen as an empty ~700px block between the
+                // panels and the results. js/listings.js's own exit path has
+                // exactly that latent bug, and so did this file's.
+                splitContainer.className = 'hidden';
                 splitContainer.innerHTML = '';
             }
-            document.getElementById('eventMapContainer')?.classList.remove('hidden');
-            setTimeout(() => {
-                if (map) {
-                    map.invalidateSize();
-                }
-            }, 100);
+            normalViewIds.forEach((id) => document.getElementById(id)?.classList.remove('hidden'));
+            filtersPanelVisible = filtersVisibleBeforeSplit;
+            updateFilterPanelPosition();
+
+            if (restoreMapPanel) {
+                document.getElementById('eventMapContainer')?.classList.remove('hidden');
+                // The plain map sat out Split View, so its markers may be
+                // stale (filters can change while the split map is up).
+                renderMap();
+                setTimeout(() => {
+                    if (map) {
+                        map.invalidateSize();
+                    }
+                }, 100);
+            }
         }
+    }
+
+    function toggleSplitEventsView() {
+        setSplitView(!splitViewActive);
     }
 
     function renderSplitEventsListings() {
@@ -1352,14 +1660,21 @@ or distribution of this code can result in legal action to the fullest extent pe
         const splitEvents = filteredEvents;
         const resultsCount = document.getElementById('splitEventResultsCount');
 
+        // Same wording as the main count (see updateResultsCount()), minus the
+        // regional " in <region>" suffix: this header is a narrow column that
+        // also holds the Filters button and the sort select.
+        const splitCountLabel = (n) => viewingStarredOnly
+            ? `${n} starred ${n === 1 ? 'event' : 'events'}`
+            : `${n} ${n === 1 ? 'event' : 'events'} found`;
+
         if (splitEvents.length === 0) {
             container.innerHTML = '<p class="text-center text-gray-600 py-12">No events found.</p>';
-            if (resultsCount) resultsCount.textContent = '0 events found';
+            if (resultsCount) resultsCount.textContent = splitCountLabel(0);
             return;
         }
 
         if (resultsCount) {
-            resultsCount.textContent = `${splitEvents.length} ${splitEvents.length === 1 ? 'event' : 'events'} found`;
+            resultsCount.textContent = splitCountLabel(splitEvents.length);
         }
 
         container.className = 'space-y-3';
@@ -1391,6 +1706,7 @@ or distribution of this code can result in legal action to the fullest extent pe
 
             return `
                 <div class="bg-white rounded-lg shadow hover:shadow-lg transition-shadow p-3 relative split-listing-item event-split-item ${isSelected ? 'selected-listing' : ''}" style="margin-right: 8px; display: flex; gap: 12px;">
+                    ${buildEventStarButtonHtml(event.id, 'top: 8px; right: 8px; width: 32px; height: 32px;', 16)}
                     ${hasCoordinates ? `
                         <button type="button" class="split-listing-content" onclick="if(typeof selectSplitEvent === 'function') selectSplitEvent('${escapeAttr(event.id)}', ${event.coordinates.lat}, ${event.coordinates.lng});">
                             ${posterHtml}
@@ -1496,6 +1812,180 @@ or distribution of this code can result in legal action to the fullest extent pe
         }
         renderSplitEventsListings();
     };
+
+    // -------------------------------------------------------------------
+    // Starred events — mirrors js/listings.js's starred-listings system:
+    // the same cookie-backed list of ids (so it survives reloads and
+    // works with no account), the same star button on every card, the
+    // same toolbar toggle that narrows the results to the starred ones,
+    // the same ?starred=1 URL form, and the same "You haven't starred any
+    // ... yet!" alert. The individual event page (js/event-page.js) reads
+    // and writes the SAME cookie, so a star set there shows up here and
+    // vice versa.
+    //
+    // Deliberately NOT ported: Listings' mirroring of its stars into the
+    // PWA's IndexedDB store (js/pwa/storage.js's starredListings object
+    // store, which backs the offline starred.html page). That store is
+    // listing-shaped and versioned (DB_VERSION 1), so adding an events
+    // store means a schema migration of an existing production database —
+    // a separate piece of work from this feature.
+    // -------------------------------------------------------------------
+
+    // Browsers silently drop a cookie that is too large (~4096 bytes in
+    // total per cookie, name and attributes included) — document.cookie
+    // simply doesn't change — so without a limit the 90th star would look
+    // like it worked and be gone on the next page load. Event ids are
+    // UUIDs, ~45 characters each once URL-encoded in the JSON array, so
+    // this budget keeps roughly the 80 most recent stars with comfortable
+    // headroom under the browser limit.
+    const MAX_STARRED_COOKIE_CHARS = 3600;
+
+    // The WHOLE read sits inside the try, getSharedCookie() included: it
+    // runs decodeURIComponent(), which throws on a malformed percent
+    // sequence (a hand-edited or truncated cookie). This is called from
+    // init() before any button is bound, so an uncaught throw here would
+    // leave the entire page without working controls — a bad cookie must
+    // just mean "nothing starred".
+    function loadStarredEvents() {
+        try {
+            const raw = getSharedCookie(STARRED_EVENTS_COOKIE);
+            const parsed = raw ? JSON.parse(raw) : [];
+            starredEvents = Array.isArray(parsed) ? parsed.map(String) : [];
+        } catch (e) {
+            starredEvents = [];
+        }
+    }
+
+    // When over budget the OLDEST stars are dropped first (new ones are
+    // appended): past events fall off the upcoming-events lists, so they
+    // can't be seen to be un-starred, and a hard "limit reached" error
+    // would leave a long-time user permanently unable to star anything new.
+    function trimStarredEventsToFit() {
+        while (starredEvents.length > 0 &&
+               encodeURIComponent(JSON.stringify(starredEvents)).length > MAX_STARRED_COOKIE_CHARS) {
+            starredEvents.shift();
+        }
+    }
+
+    // Returns false when the browser refused the cookie (cookies disabled,
+    // cookie jar full) — verified by reading it straight back, since a
+    // rejected write throws nothing.
+    function saveStarredEvents() {
+        trimStarredEventsToFit();
+        const json = JSON.stringify(starredEvents);
+        setSharedCookie(STARRED_EVENTS_COOKIE, json, 365);
+        return getSharedCookie(STARRED_EVENTS_COOKIE) === json;
+    }
+
+    function emitStarredEventsSyncEvent(action, eventId) {
+        const detail = { action, eventId, starredEvents: [...starredEvents], at: Date.now() };
+        // The localStorage write is what fires the 'storage' event in
+        // OTHER tabs/pages of this site (it never fires in the tab that
+        // wrote it); the CustomEvent is the same-page equivalent.
+        try { localStorage.setItem(STARRED_EVENTS_SYNC_KEY, JSON.stringify(detail)); } catch (e) { /* storage unavailable — cross-tab sync only */ }
+        window.dispatchEvent(new CustomEvent('tgd:starred-events-changed', { detail }));
+    }
+
+    // Sets every star button on the page (and the toolbar toggles) from
+    // starredEvents — rather than flipping only the clicked button — so an
+    // oldest-first eviction, or a change made in another tab, is reflected
+    // everywhere at once.
+    function syncAllEventStarButtons() {
+        const starredSet = new Set(starredEvents);
+        document.querySelectorAll('.star-button[data-event-id]').forEach((btn) => {
+            const on = starredSet.has(String(btn.dataset.eventId));
+            btn.classList.toggle('starred', on);
+            btn.setAttribute('aria-pressed', String(on));
+        });
+        syncControlStates();
+    }
+
+    function toggleEventStar(eventId, domEvent) {
+        if (domEvent) {
+            domEvent.preventDefault();
+            domEvent.stopPropagation();
+        }
+
+        // Re-read first: another tab or the event page may have changed the
+        // cookie since this page loaded, and writing from a stale in-memory
+        // list would silently undo that change.
+        loadStarredEvents();
+
+        const id = String(eventId);
+        const index = starredEvents.indexOf(id);
+        const nowStarred = index === -1;
+        if (nowStarred) starredEvents.push(id);
+        else starredEvents.splice(index, 1);
+
+        if (!saveStarredEvents()) {
+            loadStarredEvents();
+            syncAllEventStarButtons();
+            alert('Unable to save starred events. Please check that cookies are enabled in your browser.');
+            return;
+        }
+
+        emitStarredEventsSyncEvent(nowStarred ? 'add' : 'remove', id);
+        syncAllEventStarButtons();
+
+        // In the starred-only view an un-starred event has to leave the
+        // results immediately (same as Listings).
+        if (viewingStarredOnly) applyFiltersAndRender();
+    }
+
+    // The toolbar ★: switch between all events and only the starred ones.
+    function toggleStarredEventsView(forceState, options) {
+        options = options || {};
+        loadStarredEvents();
+        const nextState = typeof forceState === 'boolean' ? forceState : !viewingStarredOnly;
+
+        if (nextState && starredEvents.length === 0) {
+            if (!options.suppressEmptyAlert) alert("You haven't starred any events yet!");
+            viewingStarredOnly = false;
+            syncControlStates();
+            return;
+        }
+
+        viewingStarredOnly = nextState;
+        syncControlStates();
+        applyFiltersAndRender();
+    }
+
+    function refreshStarredEventsFromCookie() {
+        loadStarredEvents();
+        // Remember whether the starred-only list is on screen BEFORE the
+        // flag can be cleared below: if the last star was just removed
+        // elsewhere, the flag drops back to false, but the list on screen
+        // is still the old starred one and has to be re-rendered either way.
+        const wasViewingStarred = viewingStarredOnly;
+        if (viewingStarredOnly && starredEvents.length === 0) viewingStarredOnly = false;
+        syncAllEventStarButtons();
+        if (wasViewingStarred) applyFiltersAndRender();
+    }
+
+    function bindStarredEventSync() {
+        // ONE delegated, capture-phase listener for every star button on
+        // the page — grid cards, list rows, split items, the calendar's
+        // day detail — including ones rendered later (same approach as
+        // js/listings.js; capture phase so it runs before anything else on
+        // the way down can swallow the click).
+        document.addEventListener('click', (e) => {
+            const btn = e.target.closest('.star-button[data-event-id]');
+            if (!btn) return;
+            toggleEventStar(btn.dataset.eventId, e);
+        }, true);
+
+        // Starred on the event page (or in another tab) -> pick it up.
+        window.addEventListener('storage', (e) => {
+            if (e.key === STARRED_EVENTS_SYNC_KEY) refreshStarredEventsFromCookie();
+        });
+
+        // Back/forward cache: the browser restores the page exactly as it
+        // was left, stars and all — which is stale if the visitor starred
+        // something on the event page they just came back from.
+        window.addEventListener('pageshow', (e) => {
+            if (e.persisted) refreshStarredEventsFromCookie();
+        });
+    }
 
     // -------------------------------------------------------------------
     // Shared formatting / escaping helpers

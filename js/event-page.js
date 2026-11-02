@@ -17,7 +17,9 @@ or distribution of this code can result in legal action to the fullest extent pe
 // window.currentListingData, and adds one thing listing pages don't
 // need: a live status-badge updater, since "happening now" is a
 // function of the current moment in a way a listing's weekly hours
-// schedule already handles through its own separate system.
+// schedule already handles through its own separate system. The star
+// button follows js/listing-page.js's toggleListingStar() too — see the
+// "Starred events" section below.
 
 (function () {
     'use strict';
@@ -609,6 +611,120 @@ or distribution of this code can result in legal action to the fullest extent pe
     }
 
     // ---------------------------------------------------------------
+    // Starred events — this page's half of the same system js/events.js
+    // runs on the events list (a star on every card plus the toolbar
+    // toggle that narrows the list to the starred ones). Mirrors
+    // js/listing-page.js's getStarredListingIds() /
+    // setStarredListingIds() / toggleListingStar() and its
+    // DOMContentLoaded state restore.
+    //
+    // MUST stay in lock-step with js/events.js: same cookie (name,
+    // JSON-array-of-id-strings value, 365 days, path=/, SameSite=Lax),
+    // same size budget with oldest-first eviction, same localStorage sync
+    // key and CustomEvent name. That identity is what makes a star set
+    // here show up on the events list, and vice versa.
+    //
+    // Unlike js/listing-page.js there is no IndexedDB copy to ALSO consult
+    // (see the note in js/events.js), so the cookie is the single source
+    // of truth and the toggle decides from it — not from what the button
+    // currently shows, which can be stale after another tab or the
+    // back/forward cache has changed things.
+    // ---------------------------------------------------------------
+
+    const STARRED_EVENTS_COOKIE = 'starredEvents';
+    const STARRED_EVENTS_SYNC_KEY = 'tgd_starred_events_sync';
+    // Browsers silently drop an oversized cookie (~4096 bytes in total), so
+    // a write past the limit would look like it worked and be gone on the
+    // next load. Event ids are UUIDs (~45 characters each once
+    // URL-encoded in the JSON array): this keeps roughly the 80 most
+    // recent stars. Identical to MAX_STARRED_COOKIE_CHARS in js/events.js.
+    const MAX_STARRED_COOKIE_CHARS = 3600;
+
+    function getStarredEventIds() {
+        const cookieEntry = document.cookie.split('; ').find((item) => item.startsWith(STARRED_EVENTS_COOKIE + '='));
+        if (!cookieEntry) return [];
+        try {
+            const parsed = JSON.parse(decodeURIComponent(cookieEntry.slice(STARRED_EVENTS_COOKIE.length + 1)));
+            return Array.isArray(parsed) ? parsed.map(String) : [];
+        } catch (error) {
+            return [];
+        }
+    }
+
+    // Returns false when the browser refused the cookie (cookies
+    // disabled, cookie jar full) — checked by reading it straight back,
+    // since a rejected write throws nothing. Oldest stars are dropped
+    // first when over budget (new ones are appended): past events can't be
+    // seen to be un-starred, so refusing to add would strand long-time
+    // users.
+    function setStarredEventIds(ids) {
+        const list = ids.slice();
+        while (list.length > 0 && encodeURIComponent(JSON.stringify(list)).length > MAX_STARRED_COOKIE_CHARS) {
+            list.shift();
+        }
+        const expires = new Date(Date.now() + 365 * 864e5).toUTCString();
+        document.cookie = `${STARRED_EVENTS_COOKIE}=${encodeURIComponent(JSON.stringify(list))}; expires=${expires}; path=/; SameSite=Lax`;
+        return JSON.stringify(getStarredEventIds()) === JSON.stringify(list);
+    }
+
+    function getEventStarButton() {
+        return document.querySelector('.star-button[data-event-id]');
+    }
+
+    function applyEventStarState() {
+        const starButton = getEventStarButton();
+        if (!starButton) return;
+        const isStarred = getStarredEventIds().includes(String(starButton.dataset.eventId));
+        starButton.classList.toggle('starred', isStarred);
+        starButton.setAttribute('aria-pressed', String(isStarred));
+    }
+
+    function toggleEventStar(event) {
+        if (event) {
+            event.preventDefault();
+            event.stopPropagation();
+        }
+        const starButton = getEventStarButton();
+        if (!starButton) return;
+        const eventId = String(starButton.dataset.eventId);
+
+        const currentIds = getStarredEventIds();
+        const shouldStar = !currentIds.includes(eventId);
+        const nextIds = currentIds.filter((id) => id !== eventId);
+        if (shouldStar) nextIds.push(eventId);
+
+        if (!setStarredEventIds(nextIds)) {
+            applyEventStarState();
+            alert('Unable to save starred events. Please check that cookies are enabled in your browser.');
+            return;
+        }
+        applyEventStarState();
+
+        // Same payload shape js/events.js emits. The localStorage write is
+        // what fires 'storage' in OTHER tabs (the events list, if open);
+        // the CustomEvent is the same-page equivalent.
+        const detail = { action: shouldStar ? 'add' : 'remove', eventId, starredEvents: getStarredEventIds(), at: Date.now() };
+        try { localStorage.setItem(STARRED_EVENTS_SYNC_KEY, JSON.stringify(detail)); } catch (error) { /* storage unavailable — cross-tab sync only */ }
+        window.dispatchEvent(new CustomEvent('tgd:starred-events-changed', { detail }));
+    }
+
+    // The server-rendered page is edge-cached and identical for everyone,
+    // so it can't know who has starred this event; the button always
+    // arrives unstarred and is corrected here — immediately (this script
+    // runs after the button is parsed, which keeps the visible flash as
+    // short as possible) and again on DOMContentLoaded for safety.
+    applyEventStarState();
+    document.addEventListener('DOMContentLoaded', applyEventStarState);
+    // Starred (or un-starred) from the events list in another tab.
+    window.addEventListener('storage', (e) => {
+        if (e.key === STARRED_EVENTS_SYNC_KEY) applyEventStarState();
+    });
+    // Back/forward cache restores the page exactly as it was left.
+    window.addEventListener('pageshow', (e) => {
+        if (e.persisted) applyEventStarState();
+    });
+
+    // ---------------------------------------------------------------
     // Init
     // ---------------------------------------------------------------
 
@@ -618,6 +734,7 @@ or distribution of this code can result in legal action to the fullest extent pe
     window.copyShareLink = copyShareLink;
     window.toggleSubcategories = toggleSubcategories;
     window.toggleAddToCalendarMenu = toggleAddToCalendarMenu;
+    window.toggleEventStar = toggleEventStar;
 
     document.addEventListener('DOMContentLoaded', () => {
         initializeReadMore();

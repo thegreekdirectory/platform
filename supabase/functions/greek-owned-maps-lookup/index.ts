@@ -11,7 +11,7 @@ function validUuid(value:unknown):value is string {
 }
 function normalizePlaceId(value:unknown):string|null {
   if(typeof value!=="string") return null;
-  let id=value.trim();
+  let id=value.trim().replace(/\\+/g,"-").replace(/\\//g,"_");
   if(id.length===28 && id.startsWith("ChIJ") && id.endsWith("A")) id=id.slice(0,-1);
   return /^ChIJ[A-Za-z0-9_-]{23}$/.test(id) ? id : null;
 }

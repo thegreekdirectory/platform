@@ -42,17 +42,35 @@
     return base64.endsWith("A") ? base64.slice(0, -1) : base64;
   }
 
+  // TGD stores normalized 27-character Place IDs. Some Maps URLs expose
+  // the same Base64 value with an extra trailing A (28 characters).
+  // Trim only that 28th character; 27-character IDs ending in A are valid.
+  function normalizePlaceId(value) {
+    if (typeof value !== "string") return null;
+    let id = value.trim();
+    if (id.length === 28 && id.startsWith("ChIJ") && id.endsWith("A")) id = id.slice(0, -1);
+    return /^ChIJ[A-Za-z0-9_-]{23}$/.test(id) ? id : null;
+  }
+
   function idFrom(value) {
     try {
       const url = new URL(value, location.href);
-      const param = url.searchParams.get("query_place_id") || url.searchParams.get("place_id");
-      if (param && /^[A-Za-z0-9_-]{8,300}$/.test(param)) return param;
       const decoded = decodeURIComponent(url.href);
+
+      // Prefer the MID/CID conversion when the Maps URL includes its pair.
+      // It is the same conversion used to generate TGD's stored Place IDs.
+      const fromPair = getPlaceIdFromUrl(decoded);
+      if (fromPair) return normalizePlaceId(fromPair);
+
+      const parameter = url.searchParams.get("query_place_id") || url.searchParams.get("place_id");
+      const fromParameter = normalizePlaceId(parameter);
+      if (fromParameter) return fromParameter;
+
       const direct = decoded.match(/(ChIJ[A-Za-z0-9_-]{10,})/);
-      if (direct) return direct[1];
-      return getPlaceIdFromUrl(decoded);
+      return direct ? normalizePlaceId(direct[1]) : null;
     } catch {
-      try { return getPlaceIdFromUrl(value); } catch { return null; }
+      try { return normalizePlaceId(getPlaceIdFromUrl(value)); }
+      catch { return null; }
     }
   }
 

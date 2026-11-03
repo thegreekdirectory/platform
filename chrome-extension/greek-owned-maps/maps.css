@@ -1,7 +1,6 @@
 /* The Greek Directory — Google Maps extension
    Visual system aligned with the main TGD website and submission forms. */
 :root{--tgd-blue:#045093;--tgd-blue-dark:#033d74;--tgd-blue-mid:#0a4b87;--tgd-gold:#D4AF37;--tgd-gold-light:#e6c84e;--tgd-navy:#09152a;--tgd-text:#1a1a1a;--tgd-muted:#4b5563;--tgd-border:#e5e7eb;--tgd-pale:#f8fafc;--tgd-pale-blue:#dbeafe}
-#tgd-maps-status{position:fixed!important;top:84px!important;right:16px!important;z-index:2147483646!important;display:flex!important;align-items:center!important;gap:11px!important;width:min(330px,calc(100vw - 32px))!important;padding:12px 38px 12px 12px!important;border:1px solid var(--tgd-border)!important;border-top:3px solid var(--tgd-gold)!important;border-radius:12px!important;background:#fff!important;color:var(--tgd-text)!important;box-shadow:0 8px 26px rgba(9,21,42,.16)!important;font-family:'Bitter',Georgia,serif!important;text-align:left!important;line-height:1.4!important;box-sizing:border-box!important}
 .tgd-status-mark{display:grid!important;place-items:center!important;flex:0 0 40px!important;width:40px!important;height:40px!important;border-radius:9px!important;background:linear-gradient(145deg,var(--tgd-blue),var(--tgd-blue-dark))!important;color:#fff!important;font:800 12px/1 'Montserrat',Arial,sans-serif!important;letter-spacing:-.04em!important}
 .tgd-status-copy{display:grid!important;gap:3px!important;min-width:0!important}
 .tgd-status-brand{color:var(--tgd-blue)!important;font:800 9px/1.2 'Montserrat',Arial,sans-serif!important;letter-spacing:.11em!important;text-transform:uppercase!important}
@@ -51,7 +50,7 @@
 .tgd-btn-primary{background:var(--tgd-blue)!important;color:#fff!important;border-color:var(--tgd-blue)!important}
 .tgd-btn-primary:hover:not(:disabled){background:var(--tgd-blue-dark)!important;border-color:var(--tgd-blue-dark)!important;transform:translateY(-1px)!important}
 .tgd-btn:disabled{opacity:.55!important;cursor:not-allowed!important}
-@media(max-width:520px){#tgd-maps-status{top:72px!important;right:10px!important;width:min(300px,calc(100vw - 20px))!important}#tgd-form{padding:10px!important}#tgd-form-panel{max-height:94vh!important;border-radius:13px!important}.tgd-modal-header{padding:18px 48px 17px 17px!important}.tgd-modal-body{padding:17px!important}.tgd-modal-title{font-size:17px!important}.tgd-modal-actions{flex-direction:column-reverse!important}.tgd-btn{width:100%!important;min-height:42px!important}}
+@media(max-width:520px){#tgd-form{padding:10px!important}#tgd-form-panel{max-height:94vh!important;border-radius:13px!important}.tgd-modal-header{padding:18px 48px 17px 17px!important}.tgd-modal-body{padding:17px!important}.tgd-modal-title{font-size:17px!important}.tgd-modal-actions{flex-direction:column-reverse!important}.tgd-btn{width:100%!important;min-height:42px!important}}
 
 /* Detail-page insertions: blend with Google's business information rows. */
 .tgd-owned-detail-row{display:flex!important;align-items:center!important;gap:16px!important;min-height:52px!important;padding:8px 16px!important;margin:0!important;background:transparent!important;color:#202124!important;font:400 14px/1.4 Roboto,Arial,sans-serif!important;border:0!important}

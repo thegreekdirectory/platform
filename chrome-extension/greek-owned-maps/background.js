@@ -1,5 +1,6 @@
 importScripts("config.js");
 const CACHE_MS = 3 * 60 * 60 * 1000;
+const CACHE_PREFIX = "p3:"; // Forces a fresh lookup after the Place ID normalization fix.
 async function installId() {
   const saved = await chrome.storage.local.get("installId");
   if (saved.installId) return saved.installId;
@@ -9,8 +10,10 @@ async function installId() {
 }
 async function lookup(ids) {
   const result = {}, missing = [];
-  for (const id of [...new Set(ids)].slice(0, 30)) {
-    const item = (await chrome.storage.session.get("p:" + id))["p:" + id];
+  const validIds = [...new Set((ids || []).filter((id) => typeof id === "string" && /^ChIJ[A-Za-z0-9_-]{23}$/.test(id)))].slice(0, 30);
+  for (const id of validIds) {
+    const cacheKey = CACHE_PREFIX + id;
+    const item = (await chrome.storage.session.get(cacheKey))[cacheKey];
     if (item && Date.now() - item.at < CACHE_MS) result[id] = item.listed;
     else missing.push(id);
   }
@@ -23,7 +26,7 @@ async function lookup(ids) {
     const data = await response.json(), listed = new Set(data.listedPlaceIds || []);
     for (const id of missing) {
       result[id] = listed.has(id);
-      await chrome.storage.session.set({ ["p:" + id]: { listed: result[id], at: Date.now() } });
+      await chrome.storage.session.set({ [CACHE_PREFIX + id]: { listed: result[id], at: Date.now() } });
     }
   }
   return result;

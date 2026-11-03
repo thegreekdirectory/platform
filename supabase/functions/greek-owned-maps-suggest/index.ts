@@ -1,13 +1,19 @@
 const headers={ "Access-Control-Allow-Origin":"*","Access-Control-Allow-Headers":"apikey, authorization, content-type","Access-Control-Allow-Methods":"POST, OPTIONS","Content-Type":"application/json","Cache-Control":"no-store" };
 const reply=(data:unknown,status=200)=>new Response(JSON.stringify(data),{status,headers});
 const uuid=(v:unknown)=>typeof v==="string"&&/^[0-9a-f-]{36}$/i.test(v);
+const normalizePlaceId=(v:unknown):string|null=>{
+ if(typeof v!=="string")return null;
+ let id=v.trim();
+ if(id.length===28&&id.startsWith("ChIJ")&&id.endsWith("A"))id=id.slice(0,-1);
+ return /^ChIJ[A-Za-z0-9_-]{23}$/.test(id)?id:null;
+};
 const clean=(v:unknown,n:number)=>typeof v==="string"&&v.trim()?v.trim().slice(0,n):null;
 Deno.serve(async req=>{
  if(req.method==="OPTIONS") return new Response("ok",{headers});
  if(req.method!=="POST") return reply({error:"Method not allowed"},405);
  try{
-  const b=await req.json(),id=b?.installationId,pid=b?.placeId,name=clean(b?.businessName,200),address=clean(b?.address,300),note=clean(b?.note,500),relationship=b?.relationship;
-  if(!uuid(id)||typeof pid!=="string"||!/^[A-Za-z0-9_-]{8,300}$/.test(pid)||!name) return reply({error:"Invalid business details"},400);
+  const b=await req.json(),id=b?.installationId,pid=normalizePlaceId(b?.placeId),name=clean(b?.businessName,200),address=clean(b?.address,300),note=clean(b?.note,500),relationship=b?.relationship;
+  if(!uuid(id)||!pid||!name) return reply({error:"Invalid business details"},400);
   if(!["owner","family_friend","knows"].includes(relationship)) return reply({error:"Choose a relationship option"},400);
   const base=Deno.env.get("SUPABASE_URL")!,key=Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!;
   const bytes=new Uint8Array(await crypto.subtle.digest("SHA-256",new TextEncoder().encode(id+":suggestions")));

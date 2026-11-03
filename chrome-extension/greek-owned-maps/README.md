@@ -55,3 +55,8 @@ Approving a suggestion marks it approved in the queue; it does not automatically
 - Lookup requests send Place IDs only; lookup results are not stored server-side.
 - Suggestion submissions send the business name, Place ID, optional address, relationship choice, and optional note for review.
 - No analytics or advertising code is included.
+
+
+## Google Maps detail-page styling (v0.1.8)
+- The lower Greek-owned information row is cloned from Google's Plus Code row, then its visible text and SVG glyph are changed. Native Google Maps text/icon sizing, classes and colors are retained. The clone is inserted as a separate full-width sibling row under Plus Code.
+- The adjacent suggestion action is cloned from Google's native “Suggest an edit” control, so it inherits the current Maps button design. The original TGD-styled top button and top badge remain unchanged.

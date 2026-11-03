@@ -40,7 +40,7 @@
     for (let i = 0; i < buffer.length; i++) binaryString += String.fromCharCode(buffer[i]);
     // Google Place IDs use Base64URL, not standard Base64.
     // Convert "+" -> "-" and "/" -> "_" before matching the directory's stored IDs.
-    const base64 = btoa(binaryString).replace(/\\+/g, "-").replace(/\\//g, "_");
+    const base64 = btoa(binaryString).replace(/\+/g, "-").replace(/\//g, "_");
     return base64.endsWith("A") ? base64.slice(0, -1) : base64;
   }
 

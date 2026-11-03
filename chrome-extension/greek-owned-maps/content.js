@@ -180,10 +180,6 @@
       if(id&&name)entries.push({id,card,name:name.slice(0,200),address:""});
     }
     if(detailPage&&heading){
-      const parent=heading.parentElement||heading;
-      if(!parent.querySelector(".tgd-suggest")){
-        const button=document.createElement("button");button.className="tgd-suggest";button.textContent="Suggest for the Greek-owned list";button.onclick=()=>showForm({id:detailId,name:placeName,address:""});parent.appendChild(button);
-      }
       if(!detailId) console.warn("[TGD Maps] Place ID unavailable on current Maps profile.");
       else try{
         const result=await chrome.runtime.sendMessage({type:"LOOKUP",ids:[detailId]});if(result?.error)throw new Error(result.error);
@@ -208,7 +204,7 @@
           const button=document.createElement("button");button.className="tgd-suggest";button.textContent="Suggest for the Greek-owned list";button.onclick=()=>showForm(item);item.card.appendChild(button);
         }
       }
-    }catch(error){status("Directory lookup failed: "+(error.message||"network error"),"error")}
+    }catch(error){console.warn("[TGD Maps] Directory lookup failed:",error.message||error)}
   }
   let timer;const schedule=()=>{clearTimeout(timer);timer=setTimeout(scan,700)};
   const observer=new MutationObserver(schedule);if(document.documentElement)observer.observe(document.documentElement,{childList:true,subtree:true});

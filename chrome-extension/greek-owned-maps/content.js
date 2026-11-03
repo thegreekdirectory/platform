@@ -38,7 +38,9 @@
     for (let i = 0; i < 8; i++) { buffer[12 + i] = Number(tempCid & 0xffn); tempCid >>= 8n; }
     let binaryString = "";
     for (let i = 0; i < buffer.length; i++) binaryString += String.fromCharCode(buffer[i]);
-    const base64 = btoa(binaryString);
+    // Google Place IDs use Base64URL, not standard Base64.
+    // Convert "+" -> "-" and "/" -> "_" before matching the directory's stored IDs.
+    const base64 = btoa(binaryString).replace(/\\+/g, "-").replace(/\\//g, "_");
     return base64.endsWith("A") ? base64.slice(0, -1) : base64;
   }
 

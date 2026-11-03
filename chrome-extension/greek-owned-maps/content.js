@@ -143,20 +143,95 @@
     container.appendChild(badge);
   }
 
-  // A distinct sibling row inserted immediately after Google's Plus Code row.
+  // Clone Google's own Plus Code information row so the injected Greek-owned
+  // row inherits Maps' native typography, spacing, colors, SVG sizing and icon layout.
+  // It is inserted as a separate sibling row, never inside the Plus Code row.
   function addGreekOwnedDetailRow() {
     if(document.querySelector(".tgd-owned-detail-row")) return;
-    const pane=document.querySelector('[role="main"]')||document;
-    const plusCode=pane.querySelector('[data-item-id="oloc"]') ||
-      [...pane.querySelectorAll('button,[role="button"]')].find(el=>/plus code/i.test(el.getAttribute("aria-label")||el.textContent||""));
-    if(!plusCode) return;
 
-    const plusCodeRow=plusCode.closest('[data-item-id="oloc"]')||plusCode;
-    const tgdRow=document.createElement("div");
-    tgdRow.className="tgd-owned-detail-row";
-    tgdRow.setAttribute("role","listitem");
-    tgdRow.innerHTML='<div class="tgd-owned-detail-icon" aria-hidden="true"><span>✓</span></div><div class="tgd-owned-detail-copy"><div class="tgd-owned-detail-title">Greek-owned</div><div class="tgd-owned-detail-subtitle">Listed in The Greek Directory</div></div>';
-    plusCodeRow.insertAdjacentElement("afterend",tgdRow);
+    const pane=document.querySelector('[role="main"]')||document;
+    const plusCodeItem=pane.querySelector('[data-item-id="oloc"]');
+    const plusCodeControl=plusCodeItem || [...pane.querySelectorAll('button,[role="button"]')]
+      .find(el=>/plus code/i.test(el.getAttribute("aria-label")||el.textContent||""));
+    if(!plusCodeControl) return;
+
+    const plusCodeRow=plusCodeControl.closest(".RcCsl")
+      || plusCodeControl.closest('[role="listitem"]')
+      || plusCodeItem
+      || plusCodeControl;
+    if(!plusCodeRow.parentElement) return;
+
+    const row=plusCodeRow.cloneNode(true);
+    row.classList.add("tgd-owned-detail-row");
+    row.removeAttribute("id");
+    row.removeAttribute("data-item-id");
+    row.removeAttribute("aria-label");
+    row.removeAttribute("title");
+    row.removeAttribute("role");
+    row.removeAttribute("tabindex");
+    row.setAttribute("aria-label","Greek-owned — Listed in The Greek Directory");
+    row.querySelectorAll("[id]").forEach(el=>el.removeAttribute("id"));
+    row.querySelectorAll("[data-item-id],[jsaction],[data-tooltip],[aria-controls],[aria-expanded]").forEach(el=>{
+      el.removeAttribute("data-item-id");
+      el.removeAttribute("jsaction");
+      el.removeAttribute("data-tooltip");
+      el.removeAttribute("aria-controls");
+      el.removeAttribute("aria-expanded");
+      el.removeAttribute("tabindex");
+    });
+
+    // Change the visible label while retaining Google's text classes and typography.
+    const textNode=row.querySelector(".Io6YTe, .fontBodyMedium");
+    if(textNode) {
+      textNode.textContent="Greek-owned";
+      textNode.setAttribute("aria-label","Greek-owned");
+    } else {
+      const walker=document.createTreeWalker(row,NodeFilter.SHOW_TEXT);
+      const textNodes=[];
+      while(walker.nextNode()) if(walker.currentNode.nodeValue.trim()) textNodes.push(walker.currentNode);
+      if(textNodes.length) textNodes[textNodes.length-1].nodeValue="Greek-owned";
+      else row.textContent="Greek-owned";
+    }
+
+    // Keep the SVG element's Google Maps dimensions/classes and swap only its glyph.
+    const svg=row.querySelector("svg");
+    if(svg) {
+      svg.innerHTML='<path fill="currentColor" d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm-1.05 14.2-4.1-4.1 1.42-1.42 2.68 2.68 5.76-5.76 1.42 1.42-7.18 7.18Z"/>';
+      svg.setAttribute("aria-hidden","true");
+      svg.removeAttribute("aria-label");
+    }
+
+    // The cloned row is a visual information row, not a copy/click action.
+    row.querySelectorAll("button,a,[role='button']").forEach(control=>{
+      control.removeAttribute("href");
+      control.removeAttribute("target");
+      control.removeAttribute("role");
+      control.removeAttribute("tabindex");
+      control.setAttribute("aria-hidden","true");
+    });
+
+    row.style.setProperty("flex","0 0 100%","important");
+    row.style.setProperty("width","100%","important");
+    row.style.setProperty("max-width","100%","important");
+    row.style.setProperty("min-width","100%","important");
+    row.style.setProperty("grid-column","1 / -1","important");
+    row.style.setProperty("clear","both","important");
+    row.style.setProperty("box-sizing","border-box","important");
+    row.style.setProperty("pointer-events","none","important");
+
+    // Maps normally stacks these rows vertically. If this layout happens to use
+    // a horizontal flex parent, enable wrapping so this row starts below Plus Code.
+    const parent=plusCodeRow.parentElement;
+    const parentStyle=getComputedStyle(parent);
+    if(parentStyle.display==="flex" && parentStyle.flexDirection==="row") {
+      if(!parent.hasAttribute("data-tgd-flex-wrap")) {
+        parent.setAttribute("data-tgd-flex-wrap",parent.style.getPropertyValue("flex-wrap"));
+        parent.setAttribute("data-tgd-flex-wrap-priority",parent.style.getPropertyPriority("flex-wrap"));
+      }
+      parent.style.setProperty("flex-wrap","wrap","important");
+    }
+
+    plusCodeRow.insertAdjacentElement("afterend",row);
   }
 
   function makeDetailSuggestButton(place, extraClass) {
@@ -168,19 +243,47 @@
     return button;
   }
 
-  // Original top placement beside the business title.
+  // Original TGD-styled button beside the business title. Its design is unchanged.
   function addTopDetailSuggestButton(place, heading) {
     const container=heading?.parentElement;
     if(!container || container.querySelector(":scope > .tgd-top-suggest")) return;
     container.appendChild(makeDetailSuggestButton(place,"tgd-top-suggest"));
   }
 
-  // A second action beside Google Maps' native "Suggest an edit" control.
+  function setClonedButtonLabel(button,label) {
+    const walker=document.createTreeWalker(button,NodeFilter.SHOW_TEXT);
+    const textNodes=[];
+    while(walker.nextNode()) if(walker.currentNode.nodeValue.trim()) textNodes.push(walker.currentNode);
+    const matching=textNodes.find(node=>/suggest an edit/i.test(node.nodeValue));
+    if(matching) matching.nodeValue=matching.nodeValue.replace(/suggest an edit/i,label);
+    else if(textNodes.length) textNodes[textNodes.length-1].nodeValue=label;
+    else button.appendChild(document.createTextNode(label));
+
+    button.setAttribute("aria-label",label);
+    button.setAttribute("title",label);
+    button.removeAttribute("id");
+    button.removeAttribute("href");
+    button.removeAttribute("target");
+    button.removeAttribute("data-item-id");
+    button.removeAttribute("jsaction");
+    button.removeAttribute("data-tooltip");
+    button.classList.add("tgd-edit-suggest");
+    button.querySelectorAll("[id]").forEach(el=>el.removeAttribute("id"));
+    button.querySelectorAll("[jsaction],[data-item-id],[data-tooltip]").forEach(el=>{
+      el.removeAttribute("jsaction");
+      el.removeAttribute("data-item-id");
+      el.removeAttribute("data-tooltip");
+    });
+    return button;
+  }
+
+  // Clone Google's own "Suggest an edit" control so the adjacent TGD button
+  // inherits the native Maps button SVG, text styling, spacing, border and colors.
   function addSuggestEditAdjacentButton(place) {
     if(document.querySelector(".tgd-edit-suggest")) return;
     const pane=document.querySelector('[role="main"]')||document;
     const candidates=[...pane.querySelectorAll('button,[role="button"],a')]
-      .filter(el=>!el.closest("#tgd-form"))
+      .filter(el=>!el.closest("#tgd-form")&&!el.classList.contains("tgd-edit-suggest"))
       .filter(el=>{
         const label=(el.getAttribute("aria-label")||el.textContent||"").replace(/\\s+/g," ").trim();
         return /^suggest an edit(?:\\b|$)/i.test(label) && el.getClientRects().length>0;
@@ -188,7 +291,16 @@
       .sort((a,b)=>(a.textContent||"").length-(b.textContent||"").length);
     const nativeButton=candidates[0];
     if(!nativeButton) return;
-    nativeButton.insertAdjacentElement("afterend",makeDetailSuggestButton(place,"tgd-edit-suggest"));
+
+    const cloned=nativeButton.cloneNode(true);
+    setClonedButtonLabel(cloned,"Suggest for the Greek-owned list");
+    cloned.addEventListener("click",event=>{
+      event.preventDefault();
+      event.stopPropagation();
+      event.stopImmediatePropagation();
+      showForm(place);
+    },true);
+    nativeButton.insertAdjacentElement("afterend",cloned);
   }
 
   let activeDetailPlaceId = null;

@@ -1,6 +1,6 @@
 # The Greek Directory — Google Maps Extension
 
-Chrome Manifest V3 prototype, version 0.1.3.
+Chrome Manifest V3 prototype, version 0.1.4.
 
 ## Install for local testing
 1. Open `chrome://extensions`.
@@ -20,7 +20,7 @@ The Supabase project URL and public publishable key are configured in `config.js
 - Lookup cache is held in `chrome.storage.session` for up to three hours and clears when the browser session ends.
 
 ## Known Google Maps limitation
-Google Maps does not consistently expose Google Place IDs as explicit URL parameters. The extension now supports three paths: explicit `query_place_id` / `place_id` parameters, a direct `ChIJ...` token, and the Maps MID/CID pair format `0x...:0x...`. For the pair format, it uses the final pair in the URL and converts the two hexadecimal 64-bit values into the 21-byte protobuf payload used to construct the Place ID. The extension intentionally does not return the raw CID pair as an ID.
+Google Maps does not consistently expose Google Place IDs as explicit URL parameters. The extension now supports three paths: explicit `query_place_id` / `place_id` parameters, a direct `ChIJ...` token, and the Maps MID/CID pair format `0x...:0x...`. For the pair format, it uses the final pair in the URL and converts the two hexadecimal 64-bit values into the 21-byte protobuf payload used to construct the Place ID. The Base64 output is normalized to Base64URL (`+` → `-`, `/` → `_`) before the final trailing `A` is removed, matching the alphabet used by TGD's stored Google Place IDs. The extension intentionally does not return the raw CID pair as an ID.
 
 ## Backend functions
 The following Supabase Edge Functions are deployed to the TGD project:

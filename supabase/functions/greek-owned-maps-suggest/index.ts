@@ -3,7 +3,7 @@ const reply=(data:unknown,status=200)=>new Response(JSON.stringify(data),{status
 const uuid=(v:unknown)=>typeof v==="string"&&/^[0-9a-f-]{36}$/i.test(v);
 const normalizePlaceId=(v:unknown):string|null=>{
  if(typeof v!=="string")return null;
- let id=v.trim();
+ let id=v.trim().replace(/\\+/g,"-").replace(/\\//g,"_");
  if(id.length===28&&id.startsWith("ChIJ")&&id.endsWith("A"))id=id.slice(0,-1);
  return /^ChIJ[A-Za-z0-9_-]{23}$/.test(id)?id:null;
 };

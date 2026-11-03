@@ -2,26 +2,6 @@
   if (window.__tgdMapsExtension) return;
   window.__tgdMapsExtension = true;
 
-  function status(message, tone = "info") {
-    let node = document.getElementById("tgd-maps-status");
-    if (!node) {
-      node = document.createElement("div");
-      node.id = "tgd-maps-status";
-      node.setAttribute("role", "status");
-      node.innerHTML = `
-        <span class="tgd-status-mark" aria-hidden="true">TGD</span>
-        <span class="tgd-status-copy">
-          <strong class="tgd-status-brand">The Greek Directory</strong>
-          <span class="tgd-status-message"></span>
-        </span>
-        <button class="tgd-status-close" type="button" aria-label="Dismiss status message">&times;</button>`;
-      node.querySelector(".tgd-status-close").addEventListener("click", () => node.remove());
-      (document.body || document.documentElement).appendChild(node);
-    }
-    node.dataset.tone = tone;
-    node.querySelector(".tgd-status-message").textContent = message;
-  }
-
   function getPlaceIdFromUrl(url) {
     const regex = /0x[0-9a-fA-F]+:0x[0-9a-fA-F]+/g;
     const matches = String(url).match(regex);
@@ -141,6 +121,53 @@
     document.documentElement.appendChild(overlay); close.focus();
   }
 
+  function removeSuggestButtons(root=document) {
+    root.querySelectorAll(".tgd-suggest").forEach(button=>button.remove());
+  }
+
+  function removeGreekOwnedDetailRow() {
+    document.querySelectorAll(".tgd-owned-detail-row").forEach(row=>row.remove());
+  }
+
+  function addGreekOwnedDetailRow() {
+    if(document.querySelector(".tgd-owned-detail-row")) return;
+    const pane=document.querySelector('[role="main"]')||document;
+    const plusCode=pane.querySelector('[data-item-id="oloc"]') ||
+      [...pane.querySelectorAll('button,[role="button"]')].find(el=>/plus code/i.test(el.getAttribute("aria-label")||el.textContent||""));
+    if(!plusCode) {
+      // Maps' detail rows can vary between layouts. Add the TGD row immediately
+      // after the plus-code row once that row is present.
+      return;
+    }
+    const row=plusCode.closest('[data-item-id="oloc"]')||plusCode;
+    const tgdRow=document.createElement("div");
+    tgdRow.className="tgd-owned-detail-row";
+    tgdRow.setAttribute("role","listitem");
+    tgdRow.innerHTML='<div class="tgd-owned-detail-icon" aria-hidden="true"><span>✓</span></div><div class="tgd-owned-detail-copy"><div class="tgd-owned-detail-title">Greek-owned</div><div class="tgd-owned-detail-subtitle">Listed in The Greek Directory</div></div>';
+    row.insertAdjacentElement("afterend",tgdRow);
+  }
+
+  function addDetailSuggestButton(place) {
+    if(document.querySelector(".tgd-detail-suggest")) return;
+    const pane=document.querySelector('[role="main"]')||document;
+    // Reviews appears as a button/tab in the profile details and as a section heading.
+    const reviews=[...pane.querySelectorAll('[role="tab"],button,h2,h3,[role="heading"]')]
+      .find(el=>/^reviews(?:\\s|$)/i.test((el.getAttribute("aria-label")||el.textContent||"").trim()));
+    const button=document.createElement("button");
+    button.className="tgd-suggest tgd-detail-suggest";
+    button.textContent="Suggest for the Greek-owned list";
+    button.addEventListener("click",()=>showForm(place));
+    if(reviews) {
+      const target=reviews.closest('[role="tab"]')||reviews.closest('section')||reviews.parentElement||reviews;
+      target.insertAdjacentElement("beforebegin",button);
+    } else {
+      // Keep the button inside the business panel, not next to the title.
+      const details=pane.querySelector('[data-item-id="oloc"]')||pane.querySelector('[data-item-id="address"]');
+      if(details) (details.closest('[data-item-id]')||details).insertAdjacentElement("afterend",button);
+      else pane.appendChild(button);
+    }
+  }
+
   async function scan() {
     if (!document.body) return;
     const detailId=idFrom(location.href), heading=document.querySelector("h1"), placeName=heading?.textContent?.trim()||"";
@@ -157,18 +184,29 @@
       if(!parent.querySelector(".tgd-suggest")){
         const button=document.createElement("button");button.className="tgd-suggest";button.textContent="Suggest for the Greek-owned list";button.onclick=()=>showForm({id:detailId,name:placeName,address:""});parent.appendChild(button);
       }
-      if(!detailId)status("This business page does not expose a supported Place ID, so it cannot be checked or suggested yet.");
+      if(!detailId) console.warn("[TGD Maps] Place ID unavailable on current Maps profile.");
       else try{
         const result=await chrome.runtime.sendMessage({type:"LOOKUP",ids:[detailId]});if(result?.error)throw new Error(result.error);
-        if(result.data?.[detailId]&&!parent.querySelector(".tgd-badge")){const badge=document.createElement("span");badge.className="tgd-badge";badge.textContent="Greek-owned · TGD";parent.appendChild(badge)}
-        status(result.data?.[detailId]?"This business is listed in TGD.":"This business is not currently matched to a visible TGD listing.");
-      }catch(error){status("Directory lookup failed: "+(error.message||"network error"),"error")}
-    }else status("Extension is active. Open a business profile to check or suggest it.");
+        const listed=Boolean(result.data?.[detailId]);
+        if(listed) {
+          removeSuggestButtons(document);
+          addGreekOwnedDetailRow();
+        } else {
+          removeGreekOwnedDetailRow();
+          addDetailSuggestButton({id:detailId,name:placeName,address:""});
+        }
+      }catch(error){console.warn("[TGD Maps] Directory lookup failed:",error.message||error)}
+    }
     if(entries.length)try{
       const result=await chrome.runtime.sendMessage({type:"LOOKUP",ids:entries.map(item=>item.id)});if(result?.error)throw new Error(result.error);
       for(const item of entries){
-        if(result.data?.[item.id]&&!item.card.querySelector(".tgd-badge")){const badge=document.createElement("span");badge.className="tgd-badge";badge.textContent="Greek-owned · TGD";item.card.appendChild(badge)}
-        if(!item.card.querySelector(".tgd-suggest")){const button=document.createElement("button");button.className="tgd-suggest";button.textContent="Suggest for the Greek-owned list";button.onclick=()=>showForm(item);item.card.appendChild(button)}
+        const listed=Boolean(result.data?.[item.id]);
+        if(listed) {
+          if(!item.card.querySelector(".tgd-badge")){const badge=document.createElement("span");badge.className="tgd-badge";badge.textContent="Greek-owned · TGD";item.card.appendChild(badge)}
+          item.card.querySelectorAll(".tgd-suggest").forEach(button=>button.remove());
+        } else if(!item.card.querySelector(".tgd-suggest")) {
+          const button=document.createElement("button");button.className="tgd-suggest";button.textContent="Suggest for the Greek-owned list";button.onclick=()=>showForm(item);item.card.appendChild(button);
+        }
       }
     }catch(error){status("Directory lookup failed: "+(error.message||"network error"),"error")}
   }

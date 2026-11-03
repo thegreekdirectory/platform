@@ -121,97 +121,162 @@
     document.documentElement.appendChild(overlay); close.focus();
   }
 
-  function removeSuggestButtons(root=document) {
-    root.querySelectorAll(".tgd-suggest").forEach(button=>button.remove());
+  function removeDetailSuggestButtons() {
+    document.querySelectorAll(".tgd-top-suggest,.tgd-edit-suggest").forEach(button=>button.remove());
+  }
+
+  function removeTopGreekOwnedBadge() {
+    document.querySelectorAll(".tgd-top-badge").forEach(badge=>badge.remove());
   }
 
   function removeGreekOwnedDetailRow() {
     document.querySelectorAll(".tgd-owned-detail-row").forEach(row=>row.remove());
   }
 
+  // Original top-of-profile badge, kept separate from the Plus Code detail row.
+  function addTopGreekOwnedBadge(heading) {
+    const container=heading?.parentElement;
+    if(!container || container.querySelector(":scope > .tgd-top-badge")) return;
+    const badge=document.createElement("span");
+    badge.className="tgd-badge tgd-top-badge";
+    badge.textContent="Greek-owned · TGD";
+    container.appendChild(badge);
+  }
+
+  // A distinct sibling row inserted immediately after Google's Plus Code row.
   function addGreekOwnedDetailRow() {
     if(document.querySelector(".tgd-owned-detail-row")) return;
     const pane=document.querySelector('[role="main"]')||document;
     const plusCode=pane.querySelector('[data-item-id="oloc"]') ||
       [...pane.querySelectorAll('button,[role="button"]')].find(el=>/plus code/i.test(el.getAttribute("aria-label")||el.textContent||""));
-    if(!plusCode) {
-      // Maps' detail rows can vary between layouts. Add the TGD row immediately
-      // after the plus-code row once that row is present.
-      return;
-    }
-    const row=plusCode.closest('[data-item-id="oloc"]')||plusCode;
+    if(!plusCode) return;
+
+    const plusCodeRow=plusCode.closest('[data-item-id="oloc"]')||plusCode;
     const tgdRow=document.createElement("div");
     tgdRow.className="tgd-owned-detail-row";
     tgdRow.setAttribute("role","listitem");
     tgdRow.innerHTML='<div class="tgd-owned-detail-icon" aria-hidden="true"><span>✓</span></div><div class="tgd-owned-detail-copy"><div class="tgd-owned-detail-title">Greek-owned</div><div class="tgd-owned-detail-subtitle">Listed in The Greek Directory</div></div>';
-    row.insertAdjacentElement("afterend",tgdRow);
+    plusCodeRow.insertAdjacentElement("afterend",tgdRow);
   }
 
-  function addDetailSuggestButton(place) {
-    if(document.querySelector(".tgd-detail-suggest")) return;
-    const pane=document.querySelector('[role="main"]')||document;
-    // Reviews appears as a button/tab in the profile details and as a section heading.
-    const headings=[...pane.querySelectorAll('h2,h3,[role="heading"]')];
-    const reviews=headings.find(el=>/^reviews(?:\\s|$)/i.test((el.getAttribute("aria-label")||el.textContent||"").trim()))
-      || [...pane.querySelectorAll('button,[role="tab"]')].find(el=>/^reviews(?:\\s|$)/i.test((el.getAttribute("aria-label")||el.textContent||"").trim()));
+  function makeDetailSuggestButton(place, extraClass) {
     const button=document.createElement("button");
-    button.className="tgd-suggest tgd-detail-suggest";
+    button.type="button";
+    button.className="tgd-suggest "+extraClass;
     button.textContent="Suggest for the Greek-owned list";
     button.addEventListener("click",()=>showForm(place));
-    if(reviews) {
-      const target=reviews.closest('[role="tab"]')||reviews.closest('section')||reviews.parentElement||reviews;
-      target.insertAdjacentElement("beforebegin",button);
-    } else {
-      // Keep the button inside the business panel, not next to the title.
-      const details=pane.querySelector('[data-item-id="oloc"]')||pane.querySelector('[data-item-id="address"]');
-      if(details) (details.closest('[data-item-id]')||details).insertAdjacentElement("afterend",button);
-      else pane.appendChild(button);
-    }
+    return button;
+  }
+
+  // Original top placement beside the business title.
+  function addTopDetailSuggestButton(place, heading) {
+    const container=heading?.parentElement;
+    if(!container || container.querySelector(":scope > .tgd-top-suggest")) return;
+    container.appendChild(makeDetailSuggestButton(place,"tgd-top-suggest"));
+  }
+
+  // A second action beside Google Maps' native "Suggest an edit" control.
+  function addSuggestEditAdjacentButton(place) {
+    if(document.querySelector(".tgd-edit-suggest")) return;
+    const pane=document.querySelector('[role="main"]')||document;
+    const candidates=[...pane.querySelectorAll('button,[role="button"],a')]
+      .filter(el=>!el.closest("#tgd-form"))
+      .filter(el=>{
+        const label=(el.getAttribute("aria-label")||el.textContent||"").replace(/\\s+/g," ").trim();
+        return /^suggest an edit(?:\\b|$)/i.test(label) && el.getClientRects().length>0;
+      })
+      .sort((a,b)=>(a.textContent||"").length-(b.textContent||"").length);
+    const nativeButton=candidates[0];
+    if(!nativeButton) return;
+    nativeButton.insertAdjacentElement("afterend",makeDetailSuggestButton(place,"tgd-edit-suggest"));
   }
 
   let activeDetailPlaceId = null;
+  let detailLookupToken = 0;
   async function scan() {
     if (!document.body) return;
     const detailId=idFrom(location.href), heading=document.querySelector("h1"), placeName=heading?.textContent?.trim()||"";
     const detailPage=Boolean(heading&&(location.href.includes("/place/")||detailId));
     const entries=[];
+
     for(const anchor of document.querySelectorAll('a[href*="/maps/place/"],a[href*="query_place_id"],a[href*="place_id="]')){
-      const card=anchor.closest('[role="article"]'); if(!card||card.dataset.tgdScanned==="1")continue;
-      card.dataset.tgdScanned="1"; const id=idFrom(anchor.href);
+      const card=anchor.closest('[role="article"]');
+      if(!card||card.dataset.tgdScanned==="1")continue;
+      card.dataset.tgdScanned="1";
+      const id=idFrom(anchor.href);
       const name=card.querySelector('[role="heading"]')?.textContent?.trim()||anchor.getAttribute("aria-label")||"";
       if(id&&name)entries.push({id,card,name:name.slice(0,200),address:""});
     }
+
     if(detailPage&&heading){
       if(detailId!==activeDetailPlaceId) {
         removeGreekOwnedDetailRow();
-        document.querySelectorAll(".tgd-detail-suggest").forEach(button=>button.remove());
+        removeTopGreekOwnedBadge();
+        removeDetailSuggestButtons();
         activeDetailPlaceId=detailId;
       }
-      if(!detailId) console.warn("[TGD Maps] Place ID unavailable on current Maps profile.");
-      else try{
-        const result=await chrome.runtime.sendMessage({type:"LOOKUP",ids:[detailId]});if(result?.error)throw new Error(result.error);
-        const listed=Boolean(result.data?.[detailId]);
-        if(listed) {
-          document.querySelectorAll(".tgd-detail-suggest").forEach(button=>button.remove());
-          addGreekOwnedDetailRow();
-        } else {
-          removeGreekOwnedDetailRow();
-          addDetailSuggestButton({id:detailId,name:placeName,address:""});
-        }
-      }catch(error){console.warn("[TGD Maps] Directory lookup failed:",error.message||error)}
-    }
-    if(entries.length)try{
-      const result=await chrome.runtime.sendMessage({type:"LOOKUP",ids:entries.map(item=>item.id)});if(result?.error)throw new Error(result.error);
-      for(const item of entries){
-        const listed=Boolean(result.data?.[item.id]);
-        if(listed) {
-          if(!item.card.querySelector(".tgd-badge")){const badge=document.createElement("span");badge.className="tgd-badge";badge.textContent="Greek-owned · TGD";item.card.appendChild(badge)}
-          item.card.querySelectorAll(".tgd-suggest").forEach(button=>button.remove());
-        } else if(!item.card.querySelector(".tgd-suggest")) {
-          const button=document.createElement("button");button.className="tgd-suggest";button.textContent="Suggest for the Greek-owned list";button.onclick=()=>showForm(item);item.card.appendChild(button);
+
+      if(detailId) {
+        const lookupToken=++detailLookupToken;
+        try {
+          const result=await chrome.runtime.sendMessage({type:"LOOKUP",ids:[detailId]});
+          // Ignore delayed responses after navigating to a different Maps place.
+          if(lookupToken!==detailLookupToken || idFrom(location.href)!==detailId) return;
+          if(result?.error) throw new Error(result.error);
+          const listed=Boolean(result.data?.[detailId]);
+          const place={id:detailId,name:placeName,address:""};
+
+          if(listed) {
+            removeDetailSuggestButtons();
+            addTopGreekOwnedBadge(heading);
+            addGreekOwnedDetailRow();
+          } else {
+            removeTopGreekOwnedBadge();
+            removeGreekOwnedDetailRow();
+            addTopDetailSuggestButton(place,heading);
+            addSuggestEditAdjacentButton(place);
+          }
+        } catch(error) {
+          console.warn("[TGD Maps] Directory lookup failed:",error.message||error);
         }
       }
-    }catch(error){console.warn("[TGD Maps] Directory lookup failed:",error.message||error)}
+    } else {
+      // Clear the previous profile's injected controls when leaving its detail view.
+      if(activeDetailPlaceId!==null) {
+        activeDetailPlaceId=null;
+        detailLookupToken++;
+        removeGreekOwnedDetailRow();
+        removeTopGreekOwnedBadge();
+        removeDetailSuggestButtons();
+      }
+    }
+
+    if(entries.length) {
+      try {
+        const result=await chrome.runtime.sendMessage({type:"LOOKUP",ids:entries.map(item=>item.id)});
+        if(result?.error) throw new Error(result.error);
+        for(const item of entries) {
+          const listed=Boolean(result.data?.[item.id]);
+          if(listed) {
+            if(!item.card.querySelector(".tgd-badge")) {
+              const badge=document.createElement("span");
+              badge.className="tgd-badge";
+              badge.textContent="Greek-owned · TGD";
+              item.card.appendChild(badge);
+            }
+            item.card.querySelectorAll(".tgd-suggest").forEach(button=>button.remove());
+          } else if(!item.card.querySelector(".tgd-suggest")) {
+            const button=document.createElement("button");
+            button.className="tgd-suggest";
+            button.textContent="Suggest for the Greek-owned list";
+            button.addEventListener("click",()=>showForm(item));
+            item.card.appendChild(button);
+          }
+        }
+      } catch(error) {
+        console.warn("[TGD Maps] Search-result lookup failed:",error.message||error);
+      }
+    }
   }
   let timer;const schedule=()=>{clearTimeout(timer);timer=setTimeout(scan,700)};
   const observer=new MutationObserver(schedule);if(document.documentElement)observer.observe(document.documentElement,{childList:true,subtree:true});

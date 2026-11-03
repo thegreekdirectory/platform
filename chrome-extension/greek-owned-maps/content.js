@@ -151,8 +151,9 @@
     if(document.querySelector(".tgd-detail-suggest")) return;
     const pane=document.querySelector('[role="main"]')||document;
     // Reviews appears as a button/tab in the profile details and as a section heading.
-    const reviews=[...pane.querySelectorAll('[role="tab"],button,h2,h3,[role="heading"]')]
-      .find(el=>/^reviews(?:\\s|$)/i.test((el.getAttribute("aria-label")||el.textContent||"").trim()));
+    const headings=[...pane.querySelectorAll('h2,h3,[role="heading"]')];
+    const reviews=headings.find(el=>/^reviews(?:\\s|$)/i.test((el.getAttribute("aria-label")||el.textContent||"").trim()))
+      || [...pane.querySelectorAll('button,[role="tab"]')].find(el=>/^reviews(?:\\s|$)/i.test((el.getAttribute("aria-label")||el.textContent||"").trim()));
     const button=document.createElement("button");
     button.className="tgd-suggest tgd-detail-suggest";
     button.textContent="Suggest for the Greek-owned list";
@@ -168,6 +169,7 @@
     }
   }
 
+  let activeDetailPlaceId = null;
   async function scan() {
     if (!document.body) return;
     const detailId=idFrom(location.href), heading=document.querySelector("h1"), placeName=heading?.textContent?.trim()||"";
@@ -180,12 +182,17 @@
       if(id&&name)entries.push({id,card,name:name.slice(0,200),address:""});
     }
     if(detailPage&&heading){
+      if(detailId!==activeDetailPlaceId) {
+        removeGreekOwnedDetailRow();
+        document.querySelectorAll(".tgd-detail-suggest").forEach(button=>button.remove());
+        activeDetailPlaceId=detailId;
+      }
       if(!detailId) console.warn("[TGD Maps] Place ID unavailable on current Maps profile.");
       else try{
         const result=await chrome.runtime.sendMessage({type:"LOOKUP",ids:[detailId]});if(result?.error)throw new Error(result.error);
         const listed=Boolean(result.data?.[detailId]);
         if(listed) {
-          removeSuggestButtons(document);
+          document.querySelectorAll(".tgd-detail-suggest").forEach(button=>button.remove());
           addGreekOwnedDetailRow();
         } else {
           removeGreekOwnedDetailRow();

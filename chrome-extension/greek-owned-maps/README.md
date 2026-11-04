@@ -1,6 +1,6 @@
 # The Greek Directory — Google Maps Extension
 
-Chrome Manifest V3 prototype, version 0.2.0.
+Chrome Manifest V3 prototype, version 0.2.1.
 
 ## Install for local testing
 1. Open `chrome://extensions`.
@@ -57,6 +57,14 @@ Approving a suggestion marks it approved in the queue; it does not automatically
 - No analytics or advertising code is included.
 
 
-## Google Maps detail-page styling (v0.2.0)
+## Google Maps detail-page styling (v0.2.1)
 - The lower Greek-owned information row is cloned from Google's Plus Code row, then its visible text and SVG glyph are changed. Native Google Maps text/icon sizing, classes and colors are retained. The clone is inserted as a separate full-width sibling row under Plus Code.
 - The adjacent suggestion action is cloned from Google's native “Suggest an edit” control, so it inherits the current Maps button design. The original TGD-styled top button and top badge remain unchanged.
+
+
+## Copy and open listing actions (v0.2.1)
+- The Greek-owned detail row under Plus Code copies the corresponding TGD listing URL when clicked.
+- Hovering or focusing the row reveals **Open listing** and **Copy TGD link** actions.
+- Copy actions show a Google Maps-style “Copied to clipboard” snackbar.
+- The suggestion CTA wording is **Suggest to The Greek Directory**. The lower CTA reuses the native Google Maps “Suggest an edit” button styling and replaces its pencil icon with the Greek flag.
+- The extension popup is unchanged.

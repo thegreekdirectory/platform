@@ -52,7 +52,32 @@
 .tgd-btn:disabled{opacity:.55!important;cursor:not-allowed!important}
 @media(max-width:520px){#tgd-form{padding:10px!important}#tgd-form-panel{max-height:94vh!important;border-radius:13px!important}.tgd-modal-header{padding:18px 48px 17px 17px!important}.tgd-modal-body{padding:17px!important}.tgd-modal-title{font-size:17px!important}.tgd-modal-actions{flex-direction:column-reverse!important}.tgd-btn{width:100%!important;min-height:42px!important}}
 
-/* Top-of-profile TGD badge: keep its existing TGD style and hover animation. */
+/* Detail-page insertions: blend with Google's business information rows. */
+
+/* Profile header actions: restore the original top-of-profile locations. */
+.tgd-top-badge{display:inline-flex!important;margin:8px 6px 4px 0!important;vertical-align:middle!important}
+.tgd-top-suggest{display:inline-flex!important;margin:8px 6px 4px 0!important;vertical-align:middle!important}
+/* The Plus Code indicator is a separate, full-width sibling row. */
+
+/* Lower Greek-owned row: cloned Google Maps row styling is preserved.
+   These rules only ensure the clone occupies its own line under Plus Code. */
+  display:flex!important;
+  flex:0 0 100%!important;
+  width:100%!important;
+  max-width:100%!important;
+  min-width:100%!important;
+  grid-column:1 / -1!important;
+  clear:both!important;
+  align-self:stretch!important;
+  box-sizing:border-box!important;
+  margin:0!important;
+  pointer-events:none!important;
+}
+.tgd-owned-detail-row svg{fill:currentColor!important}
+/* Only the adjacent copy receives a small spacing adjustment; all native button
+   classes and visual styling are inherited from Google's Suggest an edit button. */
+
+/* TGD top badge: Google Sans sizing from the reference extension, TGD palette. */
 .tgd-top-badge{
   display:inline-flex!important;align-items:center!important;gap:6px!important;
   margin:6px 0 2px!important;padding:3px 10px 3px 8px!important;
@@ -77,144 +102,32 @@
 .tgd-top-badge:hover .tgd-badge-view,.tgd-top-badge:focus-visible .tgd-badge-view{max-width:58px!important;margin-left:3px!important;opacity:1!important;transform:translateX(0)!important}
 .tgd-top-badge:hover .tgd-badge-view svg,.tgd-top-badge:focus-visible .tgd-badge-view svg{transform:translateX(2px)!important}
 
-/* The lower row reuses Google's live website-row DOM and styles. These rules
-   only let the native-width row occupy its own line directly below Plus Code. */
+/* Plus Code follow-up row mirrors Google's native information rows. */
 .tgd-owned-detail-row{
-  display:flex!important;
-  flex:0 0 100%!important;
-  width:100%!important;
-  max-width:100%!important;
-  clear:both!important;
-  box-sizing:border-box!important;
-}
-.tgd-native-row-subtitle{
-  display:block!important;
-  margin-top:1px!important;
-  font:400 12px/16px "Google Sans Text",Roboto,Arial,sans-serif!important;
-  color:#5f6368!important;
-}
-.tgd-native-flag-icon .tgd-greek-flag{
-  display:block!important;
-  width:24px!important;
-  height:16px!important;
-}
-
-/* Place the native Google Maps Suggest an edit button clone on its own centered
-   line. Its actual button shell, hover, focus and typography come from Maps. */
-.tgd-bottom-suggest-wrap{
-  display:flex!important;
-  flex:0 0 100%!important;
-  width:100%!important;
-  max-width:100%!important;
-  justify-content:center!important;
-  align-items:center!important;
-  box-sizing:border-box!important;
-  padding:8px 0 0!important;
-  text-align:center!important;
-}
-.tgd-bottom-suggest{margin-left:auto!important;margin-right:auto!important}
-.tgd-bottom-suggest .tgd-greek-flag{
-  display:block!important;
-  width:18px!important;
-  height:12px!important;
-  flex:none!important;
-  border-radius:2px!important;
-  box-shadow:0 0 0 .5px rgba(0,0,0,.2)!important;
-}
-
-/* Keep the copied native row shell, but the main text is intentionally Greek-owned. */
-.tgd-owned-detail-row{flex:0 0 100%!important;width:100%!important;max-width:100%!important;min-width:100%!important}
-.tgd-owned-main{cursor:pointer!important}
-.tgd-owned-label{white-space:nowrap!important}
-.tgd-bottom-suggest{position:relative!important}
-.tgd-bottom-suggest::before,.tgd-bottom-suggest::after{content:none!important;display:none!important}
-.tgd-bottom-suggest-flag{display:inline-flex!important;align-items:center!important;flex:none!important}
-.tgd-bottom-suggest-flag .tgd-greek-flag{display:block!important;width:18px!important;height:12px!important;flex:none!important}
-.tgd-bottom-suggest-label{display:inline-block!important;white-space:nowrap!important}
-
-
-/* Profile-header suggestion action. Styled as a compact Maps-adjacent pill,
-   with the Greek flag replacing any generic edit/plus symbol. */
-.tgd-top-suggest{
-  display:inline-flex!important;align-items:center!important;gap:6px!important;
-  margin:6px 0 2px 8px!important;padding:3px 10px 3px 8px!important;
-  border:0!important;border-radius:999px!important;
-  background:rgba(4,80,147,.12)!important;color:#045093!important;
-  font:500 13px/18px "Google Sans",Roboto,Arial,sans-serif!important;
-  white-space:nowrap!important;vertical-align:middle!important;
-  cursor:pointer!important;appearance:none!important;box-shadow:none!important;
-  transition:background .2s ease,box-shadow .2s ease!important;
-}
-.tgd-top-suggest:hover,.tgd-top-suggest:focus-visible{
-  background:rgba(4,80,147,.18)!important;
-  box-shadow:0 2px 8px rgba(4,80,147,.14)!important;
-}
-.tgd-top-suggest:focus-visible{outline:2px solid #045093!important;outline-offset:2px!important}
-.tgd-top-suggest-flag,.tgd-top-suggest-flag .tgd-greek-flag{
-  display:inline-flex!important;align-items:center!important;flex:none!important;
-}
-.tgd-top-suggest-flag .tgd-greek-flag{
-  display:block!important;width:18px!important;height:12px!important;
-  border-radius:2px!important;box-shadow:0 0 0 .5px rgba(0,0,0,.2)!important;
-}
-.tgd-top-suggest-label{display:inline-block!important}
-
-/* Purpose-built listing row: one Greek flag only (no inherited globe icon),
-   native-looking two-line copy, and separate open/copy actions on the right. */
-.tgd-owned-detail-row{
-  display:flex!important;align-items:center!important;justify-content:stretch!important;
-  flex:0 0 100%!important;width:100%!important;max-width:100%!important;min-width:100%!important;
-  min-height:68px!important;box-sizing:border-box!important;
-  padding:0 24px!important;margin:0!important;
-  border:0!important;border-radius:0!important;background:transparent!important;
-  color:inherit!important;font:400 14px/20px "Google Sans Text",Roboto,Arial,sans-serif!important;
-}
-.tgd-owned-detail-row:hover{background:#f1f3f4!important}
-.tgd-owned-main{
-  display:flex!important;align-items:center!important;align-self:stretch!important;
-  flex:1 1 auto!important;min-width:0!important;gap:24px!important;
-  margin:0!important;padding:0!important;border:0!important;border-radius:0!important;
-  background:transparent!important;color:inherit!important;text-align:left!important;
-  font:inherit!important;cursor:pointer!important;
-}
-.tgd-owned-main:hover{background:transparent!important}
-.tgd-owned-main:focus-visible,.tgd-owned-action:focus-visible{
-  outline:2px solid #1a73e8!important;outline-offset:-2px!important;
-}
-.tgd-owned-flag{
-  display:flex!important;align-items:center!important;justify-content:center!important;
-  flex:0 0 24px!important;width:24px!important;height:24px!important;
-}
-.tgd-owned-flag .tgd-greek-flag{
-  display:block!important;width:24px!important;height:16px!important;flex:none!important;
-}
-.tgd-owned-copy{
-  display:flex!important;flex-direction:column!important;justify-content:center!important;
-  min-width:0!important;gap:1px!important;
-}
-.tgd-owned-label{
-  display:block!important;color:inherit!important;
+  display:flex!important;align-items:center!important;min-height:48px!important;
+  width:100%!important;max-width:100%!important;padding:0 24px!important;margin:0!important;
+  box-sizing:border-box!important;color:inherit!important;
   font:400 14px/20px "Google Sans Text",Roboto,Arial,sans-serif!important;
-  text-decoration:underline!important;text-underline-offset:2px!important;
-  white-space:nowrap!important;
+  text-align:left!important;border:0!important;background:transparent!important;clear:both!important;
 }
-.tgd-owned-subtitle{
-  display:block!important;color:#5f6368!important;
-  font:400 12px/16px "Google Sans Text",Roboto,Arial,sans-serif!important;
-  white-space:nowrap!important;
+.tgd-detail-row-icon{
+  display:flex!important;align-items:center!important;justify-content:center!important;
+  width:24px!important;height:24px!important;margin-right:24px!important;flex:none!important;
 }
-.tgd-owned-actions{
-  display:flex!important;align-items:center!important;justify-content:flex-end!important;
-  flex:0 0 auto!important;gap:4px!important;margin-left:12px!important;
+.tgd-detail-row-icon .tgd-greek-flag{
+  display:block!important;width:24px!important;height:16px!important;flex:none!important;
+  border-radius:1.5px!important;box-shadow:0 0 0 .5px rgba(0,0,0,.2)!important;
 }
-.tgd-owned-action{
-  display:inline-flex!important;align-items:center!important;justify-content:center!important;
-  flex:0 0 32px!important;width:32px!important;height:32px!important;
-  margin:0!important;padding:6px!important;border:0!important;border-radius:50%!important;
-  background:transparent!important;color:#5f6368!important;box-shadow:none!important;
-  cursor:pointer!important;appearance:none!important;
-}
-.tgd-owned-action:hover{background:rgba(60,64,67,.08)!important;color:#202124!important}
-.tgd-owned-action svg{display:block!important;width:20px!important;height:20px!important;pointer-events:none!important}
-.tgd-open-listing-action,.tgd-copy-listing-action{visibility:visible!important;opacity:1!important}
+.tgd-detail-row-copy{display:flex!important;flex-direction:column!important;justify-content:center!important;gap:1px!important;min-width:0!important}
+.tgd-detail-row-title{display:block!important;color:inherit!important;font:400 14px/20px "Google Sans Text",Roboto,Arial,sans-serif!important}
+.tgd-detail-row-subtitle{display:block!important;color:#5f6368!important;font:400 12px/16px "Google Sans Text",Roboto,Arial,sans-serif!important}
 
+/* Bottom suggestion is centered beneath Google's native Suggest an edit row. */
+.tgd-bottom-suggest-wrap{
+  display:block!important;flex:0 0 100%!important;width:100%!important;max-width:100%!important;
+  box-sizing:border-box!important;padding:8px 0 0!important;text-align:center!important;
+}
+.tgd-bottom-suggest{display:inline-flex!important;align-items:center!important;justify-content:center!important;gap:8px!important;margin:0 auto!important;vertical-align:middle!important}
+.tgd-bottom-suggest:before{content:none!important;display:none!important}
+.tgd-bottom-suggest .tgd-greek-flag{display:block!important;width:18px!important;height:12px!important;flex:none!important;border-radius:2px!important;box-shadow:0 0 0 .5px rgba(0,0,0,.2)!important}
+.tgd-bottom-suggest span{display:inline-block!important}

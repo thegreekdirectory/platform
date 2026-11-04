@@ -1,6 +1,6 @@
 # The Greek Directory — Google Maps Extension
 
-Chrome Manifest V3 prototype, version 0.2.3.
+Chrome Manifest V3 prototype, version 0.2.4.
 
 ## Install for local testing
 1. Open `chrome://extensions`.
@@ -57,12 +57,12 @@ Approving a suggestion marks it approved in the queue; it does not automatically
 - No analytics or advertising code is included.
 
 
-## Google Maps detail-page styling (v0.2.3)
+## Google Maps detail-page styling (v0.2.4)
 - The lower Greek-owned information row is cloned from Google's Plus Code row, then its visible text and SVG glyph are changed. Native Google Maps text/icon sizing, classes and colors are retained. The clone is inserted as a separate full-width sibling row under Plus Code.
 - The adjacent suggestion action is cloned from Google's native “Suggest an edit” control, so it inherits the current Maps button design. The original TGD-styled top button and top badge remain unchanged.
 
 
-## Copy and open listing actions (v0.2.3)
+## Copy and open listing actions (v0.2.4)
 - The Greek-owned detail row under Plus Code copies the corresponding TGD listing URL when clicked.
 - Hovering or focusing the row reveals **Open listing** and **Copy TGD link** actions.
 - Copy actions show a Google Maps-style “Copied to clipboard” snackbar.
@@ -70,9 +70,15 @@ Approving a suggestion marks it approved in the queue; it does not automatically
 - The extension popup is unchanged.
 
 
-## Native Google Maps row and clipboard behavior (v0.2.3)
+## Native Google Maps row and clipboard behavior (v0.2.4)
 - The Greek-owned row is built from the current Google Maps website information row, retaining its native row hover treatment and its original action-icon components.
 - The cloned actions are labeled **Open listing** and **Copy TGD link**. The open action opens the matched listing in a new tab.
 - The copy action arms a narrow MAIN-world clipboard bridge and triggers a real Google Maps copy action; the bridge substitutes the TGD URL only for that next clipboard write. Google Maps handles its own “Copied to clipboard” snackbar. The extension no longer draws its own snackbar.
 - The bottom **Suggest to The Greek Directory** action now keeps Google's native Suggest an edit button markup and styling while replacing only its pencil graphic and label.
 - Popup files are unchanged.
+
+
+## Row and suggestion correction (v0.2.4)
+- The Plus Code follow-up is now a genuine **Greek-owned** row, not duplicated website content. It reuses the native Maps row shell and only clones the website action controls.
+- The trailing open action opens the matching TGD listing in a new tab; the copy action uses the native Maps copy control.
+- The bottom suggestion button is newly constructed using the Google Maps button's computed appearance. It does not inherit the Google pencil SVG or pseudo-element.

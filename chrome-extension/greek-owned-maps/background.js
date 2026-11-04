@@ -1,6 +1,6 @@
 importScripts("config.js");
 const CACHE_MS = 3 * 60 * 60 * 1000;
-const CACHE_PREFIX = "p3:"; // Forces a fresh lookup after the Place ID normalization fix.
+const CACHE_PREFIX = "p4:"; // Refresh cached records to include their public TGD slugs.
 async function installId() {
   const saved = await chrome.storage.local.get("installId");
   if (saved.installId) return saved.installId;
@@ -23,9 +23,14 @@ async function lookup(ids) {
       body: JSON.stringify({ installationId: await installId(), placeIds: missing })
     });
     if (!response.ok) throw new Error("Directory lookup unavailable");
-    const data = await response.json(), listed = new Set(data.listedPlaceIds || []);
+    const data = await response.json();
+    const listed = new Set(data.listedPlaceIds || []);
+    const records = new Map((data.matches || []).map((item) => [item.placeId, item]));
     for (const id of missing) {
-      result[id] = listed.has(id);
+      const record = records.get(id);
+      result[id] = record
+        ? { listed: true, slug: typeof record.slug === "string" ? record.slug : null }
+        : (listed.has(id) ? { listed: true, slug: null } : false);
       await chrome.storage.session.set({ [CACHE_PREFIX + id]: { listed: result[id], at: Date.now() } });
     }
   }

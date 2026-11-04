@@ -1,6 +1,6 @@
 # The Greek Directory — Google Maps Extension
 
-Chrome Manifest V3 prototype, version 0.2.0.
+Chrome Manifest V3 prototype, version 0.2.1.
 
 ## Install for local testing
 1. Open `chrome://extensions`.
@@ -60,3 +60,11 @@ Approving a suggestion marks it approved in the queue; it does not automatically
 ## Google Maps detail-page styling (v0.2.0)
 - The lower Greek-owned information row is cloned from Google's Plus Code row, then its visible text and SVG glyph are changed. Native Google Maps text/icon sizing, classes and colors are retained. The clone is inserted as a separate full-width sibling row under Plus Code.
 - The adjacent suggestion action is cloned from Google's native “Suggest an edit” control, so it inherits the current Maps button design. The original TGD-styled top button and top badge remain unchanged.
+
+
+## Native Google Maps detail-page interactions (v0.2.1)
+- Suggestion controls use the wording **Suggest to The Greek Directory**.
+- The lower suggestion control duplicates the native Google Maps **Suggest an edit** button structure and styling, replacing its pencil graphic with the Greek flag.
+- The Greek-owned row below Plus Code is cloned from the native website information row. It retains Google's hover treatment and native trailing actions, labeled **Open listing** and **Copy TGD link**.
+- Clicking the row body or **Copy TGD link** invokes Google's native copy control through the MAIN-world clipboard bridge, so Maps displays its own **Copied to clipboard** snackbar. No custom toast is added.
+- The MAIN-world bridge is registered at document start. The extension popup is unchanged.

@@ -327,6 +327,8 @@
     row.setAttribute("aria-label", "Greek-owned — Listed in The Greek Directory");
     row.setAttribute("role", "group");
     row.removeAttribute("id");
+    row.removeAttribute("jsaction");
+    row.removeAttribute("data-item-id");
 
     // Find the primary website item before stripping Google's place-specific bindings.
     const mainItem = row.querySelector('[data-item-id="authority"]')

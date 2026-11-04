@@ -121,3 +121,15 @@
   border-radius:2px!important;
   box-shadow:0 0 0 .5px rgba(0,0,0,.2)!important;
 }
+
+/* Keep the copied native row shell, but the main text is intentionally Greek-owned. */
+.tgd-owned-detail-row{flex:0 0 100%!important;width:100%!important;max-width:100%!important;min-width:100%!important}
+.tgd-owned-main{display:flex!important;align-items:center!important;flex:1 1 auto!important;min-width:0!important;cursor:pointer!important}
+.tgd-owned-label{white-space:nowrap!important}
+.tgd-owned-native-actions{display:flex!important;align-items:center!important;flex:0 0 auto!important;margin-left:auto!important}
+.tgd-owned-native-actions button{cursor:pointer!important}
+.tgd-bottom-suggest{position:relative!important}
+.tgd-bottom-suggest::before,.tgd-bottom-suggest::after{content:none!important;display:none!important}
+.tgd-bottom-suggest-flag{display:inline-flex!important;align-items:center!important;flex:none!important}
+.tgd-bottom-suggest-flag .tgd-greek-flag{display:block!important;width:18px!important;height:12px!important;flex:none!important}
+.tgd-bottom-suggest-label{display:inline-block!important;white-space:nowrap!important}

@@ -300,12 +300,22 @@
         .find(el=>/plus code/i.test(el.getAttribute("aria-label")||el.textContent||""));
     if(!plusCodeControl?.parentElement) return;
 
-    const plusCodeRow=plusCodeControl.parentElement;
     const websiteRow=findNativeWebsiteRow(pane);
     if(!websiteRow) {
       console.warn("[TGD Maps] Native Maps action buttons are not available on this profile yet.");
       return;
     }
+
+    // Find the Plus Code's outer Google Maps information-row wrapper. Do not
+    // insert next to an inner button/content node: that places it on the same line.
+    let plusCodeRow=plusCodeControl;
+    for(let level=0;level<6 && plusCodeRow && plusCodeRow.parentElement;level++) {
+      if(plusCodeRow.tagName===websiteRow.tagName &&
+         plusCodeRow.className===websiteRow.className) break;
+      if(plusCodeRow.classList?.contains("RcCsl")) break;
+      plusCodeRow=plusCodeRow.parentElement;
+    }
+    if(!plusCodeRow || plusCodeRow===pane) plusCodeRow=plusCodeControl.parentElement;
 
     const websiteMain=websiteRow.querySelector('button[data-item-id="authority"]')
       || websiteRow.querySelector('[data-item-id="authority"]')

@@ -44,7 +44,7 @@ Deno.serve(async(req:Request)=>{
     }
     if(await quota.json()!==true) return reply({error:"Rate limit reached. Try again in a minute.",code:"RATE_LIMITED"},429);
 
-    const query=new URLSearchParams({select:"google_place_id",visible:"eq.true"});
+    const query=new URLSearchParams({select:"google_place_id,slug",visible:"eq.true"});
     if(placeIds.length===1) query.set("google_place_id","eq."+placeIds[0]);
     else query.set("google_place_id","in.("+placeIds.map((id)=>'"'+id+'"').join(",")+")");
 
@@ -57,7 +57,10 @@ Deno.serve(async(req:Request)=>{
     }
     const rows=await response.json();
     if(!Array.isArray(rows)) return reply({error:"Unexpected directory response",code:"INVALID_DIRECTORY_RESPONSE"},502);
-    return reply({listedPlaceIds:rows.map((row:{google_place_id:string})=>row.google_place_id)});
+    return reply({
+      listedPlaceIds:rows.map((row:{google_place_id:string})=>row.google_place_id),
+      matches:rows.map((row:{google_place_id:string;slug:string})=>({placeId:row.google_place_id,slug:row.slug}))
+    });
   } catch(error) {
     console.error("TGD Maps lookup request failed:",error instanceof Error?error.message:"unknown error");
     return reply({error:"Invalid lookup request",code:"INVALID_REQUEST"},400);

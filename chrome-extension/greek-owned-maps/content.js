@@ -130,7 +130,18 @@
     document.querySelectorAll(".tgd-top-badge").forEach(badge=>badge.remove());
   }
   function removeGreekOwnedDetailRow() {
-    document.querySelectorAll(".tgd-owned-detail-row").forEach(row=>row.remove());
+    document.querySelectorAll(".tgd-owned-detail-row").forEach(row=>{
+      const parent=row.parentElement;
+      if(parent && parent.hasAttribute("data-tgd-flex-wrap-original")) {
+        const value=parent.getAttribute("data-tgd-flex-wrap-original");
+        const priority=parent.getAttribute("data-tgd-flex-wrap-priority")||"";
+        if(value) parent.style.setProperty("flex-wrap",value,priority);
+        else parent.style.removeProperty("flex-wrap");
+        parent.removeAttribute("data-tgd-flex-wrap-original");
+        parent.removeAttribute("data-tgd-flex-wrap-priority");
+      }
+      row.remove();
+    });
   }
 
   // Original top-of-profile badge with the reference extension's Google Sans type treatment.
@@ -354,15 +365,33 @@
       copyClone.replaceWith(copyButton);
     }
 
-    // Clicking the main row copies the TGD URL too, like Maps' own copyable rows.
-    mainItem.addEventListener("click",event=>{
-      if(event.target.closest("button[data-tooltip],button[aria-label]") && event.target!==mainItem) return;
+    if(openClone) openClone.classList.add("tgd-open-listing-action");
+    if(copyClone) copyClone.classList.add("tgd-copy-listing-action");
+
+    // Ensure the cloned Maps row starts on its own line beneath Plus Code.
+    const layout=plusCodeRow.parentElement;
+    if(layout) {
+      const style=getComputedStyle(layout);
+      if(style.display==="flex" && !style.flexDirection.startsWith("column")) {
+        if(!layout.hasAttribute("data-tgd-flex-wrap-original")) {
+          layout.setAttribute("data-tgd-flex-wrap-original",layout.style.getPropertyValue("flex-wrap"));
+          layout.setAttribute("data-tgd-flex-wrap-priority",layout.style.getPropertyPriority("flex-wrap"));
+        }
+        layout.style.setProperty("flex-wrap","wrap","important");
+      }
+    }
+
+    // Clicking anywhere on the row body copies the TGD URL through Maps' own
+    // copy action. Native open/copy icon controls keep their separate behavior.
+    row.addEventListener("click",event=>{
+      if(event.target.closest(".tgd-open-listing-action,.tgd-copy-listing-action")) return;
       event.preventDefault();
       event.stopPropagation();
       copyTgdLinkWithMaps(listingUrl,pane);
     });
-    mainItem.addEventListener("keydown",event=>{
+    row.addEventListener("keydown",event=>{
       if(event.key==="Enter" || event.key===" ") {
+        if(event.target.closest(".tgd-open-listing-action,.tgd-copy-listing-action")) return;
         event.preventDefault();
         copyTgdLinkWithMaps(listingUrl,pane);
       }

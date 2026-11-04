@@ -283,7 +283,8 @@ export async function onRequestGet(context) {
         owners = [];
     }
 
-    const { html, footerTemplate } = renderPrintPage(listing, owners);
+    const printOptions = parsePrintOptions(requestUrl.searchParams);
+    const { html, footerTemplate } = renderPrintPage(listing, owners, printOptions);
 
     let pdfResponse;
     try {
@@ -388,6 +389,44 @@ export async function onRequestGet(context) {
             'Cache-Control': 'no-store',
         },
     });
+}
+
+// ---------------------------------------------------------------------------
+// Print customization (query parameters)
+//
+// Set by the Print pane of the Share modal on listing pages (see
+// buildPrintUrl in js/listing-page.js). Every flag is "on" ONLY when its
+// value is exactly "1"; a missing param, or any other value ("0", "true",
+// "", ...), falls back to that option's default. Only non-default choices
+// need to be sent.
+//
+//   Images (3 choices, default = banner only)
+//     ?noimages=1   No Images: no top banner, no individual image pages
+//     ?allimages=1  All Images: top banner + a full page per image
+//     (neither)     Banner Image Only: top banner, no image pages
+//     If both are somehow "1", noimages wins (the more conservative choice).
+//
+//   Listing URL in each page's footer (2 choices, default = yes)
+//     ?nofooterurl=1  Footer omits the listing URL (the printed date /
+//                     TGD name stays)
+//     (absent)        Footer shows the listing URL
+//
+// The loading-screen pass (renderLoadingPage) copies the whole query string
+// onto its ?render=1 follow-up request, so these survive into the real
+// render pass without any extra handling.
+// ---------------------------------------------------------------------------
+
+function parsePrintOptions(searchParams) {
+    const isOn = (name) => searchParams.get(name) === '1';
+
+    let images = 'banner';
+    if (isOn('noimages')) images = 'none';
+    else if (isOn('allimages')) images = 'all';
+
+    return {
+        images, // 'none' | 'banner' | 'all'
+        showFooterUrl: !isOn('nofooterurl'),
+    };
 }
 
 // Used only for the small set of human-facing error/status pages (missing
@@ -1100,7 +1139,11 @@ function buildAdditionalGalleryPages(photoList, businessName, city, state) {
 // Top-level page assembly
 // ---------------------------------------------------------------------------
 
-function renderPrintPage(listing, owners) {
+function renderPrintPage(listing, owners, printOptions) {
+    // Defaults mirror parsePrintOptions' defaults, so a caller that passes
+    // nothing gets the same output as no query parameters at all.
+    const options = { images: 'banner', showFooterUrl: true, ...(printOptions || {}) };
+
     const decodedBusinessName = decodeEscapedText(listing.business_name || '');
     const decodedTagline = decodeEscapedText(listing.tagline || '');
     const decodedCity = decodeEscapedText(listing.city || '');
@@ -1111,7 +1154,8 @@ function renderPrintPage(listing, owners) {
     // Same fallback order as admin.js: use the photos array if present,
     // otherwise fall back to the logo as the only "photo".
     const photoList = photos.length > 0 ? photos : logo ? [logo] : [];
-    const heroImage = photoList[0] || logo || '';
+    // "No Images" removes the top banner entirely; the other two choices keep it.
+    const heroImage = options.images === 'none' ? '' : photoList[0] || logo || '';
 
     const pricingSymbols = pricingToSymbols(listing.pricing);
     const subcategoryTags = buildSubcategoryTags(listing);
@@ -1138,7 +1182,9 @@ function renderPrintPage(listing, owners) {
     const ownerSection = buildOwnerCardsHtml(owners);
     const socialSection = buildSocialSection(listing);
     const reviewsSection = buildReviewsSection(listing);
-    const galleryPages = buildAdditionalGalleryPages(photoList, decodedBusinessName, decodedCity, decodedState);
+    // Individual image pages exist ONLY for "All Images". "No Images" and
+    // "Banner Image Only" both produce no gallery pages.
+    const galleryPages = options.images === 'all' ? buildAdditionalGalleryPages(photoList, decodedBusinessName, decodedCity, decodedState) : '';
 
     const listingUrl = `https://thegreekdirectory.org/listing/${escapeHtml(listing.slug || '')}`;
     const generatedAt = new Date().toISOString().slice(0, 10);
@@ -1251,7 +1297,13 @@ ${PRINT_STYLES}
     //   font-family: -apple-system, ... <- inherited from html/body in
     //                                PRINT_STYLES, since .gallery-page-footer
     //                                never set its own font-family
-    const footerTemplate = `<div style="width: 100%; font-size: 9px; color: #6b7280; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; padding: 0 0.65in; display: flex; justify-content: space-between; box-sizing: border-box;"><span>${listingUrl}</span><span>Printed ${escapeHtml(generatedAt)} — The Greek Directory</span></div>`;
+    // When the listing URL is turned off (?nofooterurl=1) only the printed
+    // date / TGD name remains, so the row switches from space-between to
+    // flex-end to keep that text right-aligned where it already was, rather
+    // than jumping to the left edge as the lone flex child.
+    const footerUrlSpan = options.showFooterUrl ? `<span>${listingUrl}</span>` : '';
+    const footerJustify = options.showFooterUrl ? 'space-between' : 'flex-end';
+    const footerTemplate = `<div style="width: 100%; font-size: 9px; color: #6b7280; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif; padding: 0 0.65in; display: flex; justify-content: ${footerJustify}; box-sizing: border-box;">${footerUrlSpan}<span>Printed ${escapeHtml(generatedAt)} — The Greek Directory</span></div>`;
 
     return { html, footerTemplate };
 }
@@ -1738,14 +1790,47 @@ const PRINT_STYLES = `<style>
        absolute positioning, nothing that depends on a pagination engine
        correctly reconciling a transformed box against a fixed page size. */
 
+    /* CAPTION-LEAK FIX (why this box is shorter than the page's content area):
+
+       This box used to be height: 9.8in — exactly the page's content area
+       (11in letter minus @page's 0.6in top and bottom margins), with zero
+       slack. The caption (\"<Business> — Photo N of M\") is the LAST flex
+       child, pinned to the bottom of that box, so whenever the real
+       printable area came out even slightly shorter than 9.8in, the
+       print engine had to split the box across two pages and the caption
+       — the only thing at the very bottom — was what got pushed onto the
+       next page, as a nearly empty sheet of its own. Reproduced against
+       a real page.pdf() export: with a content area just 0.1in short of
+       9.8in, a 6-photo listing went from 7 pages to 13, every caption on
+       its own page away from its image.
+
+       Fix: the box is 0.6in SHORTER than the content area (9.2in) and
+       nudged down by 0.3in, so it sits visually centered in the same spot
+       as before but now has 0.3in of slack at the bottom (and 0.3in at
+       the top) before it could ever reach a page edge. The frame's and
+       image's max-height are reduced to match (8.6in, was 8.9in) so the
+       image plus even a multi-line caption still fits inside the box.
+       break-inside/page-break-inside: avoid additionally tell the engine
+       never to split this box across pages, so image and caption always
+       travel together. The page break after each gallery page still comes
+       from .print-page's page-break-after: always, so the shorter box
+       doesn't change how many pages there are. */
     .gallery-page {
         display: flex;
         flex-direction: column;
         align-items: center;
-        /* Fixed (not min-) height, matching .print-page's content-area
-           height exactly, so there's one known, unchanging amount of
-           free space for the frame's auto margins to split evenly. */
-        height: 9.8in;
+        /* Fixed (not min-) height so there's one known, unchanging amount
+           of free space for the frame's auto margins to split evenly. */
+        height: 9.2in;
+        /* .print-page (which this element also is) sets min-height: 9.8in
+           for the hero page; without resetting it here that min-height
+           would override the shorter height above and, together with the
+           margin-top below, push the box past the page edge — producing a
+           blank page between every pair of gallery pages. */
+        min-height: 0;
+        margin: 0.3in auto 0;
+        break-inside: avoid;
+        page-break-inside: avoid;
     }
 
     .gallery-page-frame {
@@ -1753,7 +1838,7 @@ const PRINT_STYLES = `<style>
         margin-bottom: auto;
         width: 100%;
         max-width: 100%;
-        max-height: 8.9in;
+        max-height: 8.6in;
         display: flex;
         align-items: center;
         justify-content: center;
@@ -1762,7 +1847,7 @@ const PRINT_STYLES = `<style>
 
     .gallery-page-image {
         max-width: 100%;
-        max-height: 8.9in;
+        max-height: 8.6in;
         width: auto;
         height: auto;
         object-fit: contain;

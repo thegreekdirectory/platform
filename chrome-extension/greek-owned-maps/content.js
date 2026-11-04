@@ -163,6 +163,36 @@
     container.appendChild(badge);
   }
 
+
+  // Restore the profile-header suggestion control. This button is independent
+  // of the lower button beside Google's native "Suggest an edit" control.
+  function addTopDetailSuggestButton(place, heading) {
+    if (!heading || document.querySelector(".tgd-top-suggest")) return;
+
+    const button = document.createElement("button");
+    button.type = "button";
+    button.className = "tgd-top-suggest";
+    button.setAttribute("aria-label", "Suggest to The Greek Directory");
+    button.setAttribute("title", "Suggest to The Greek Directory");
+
+    const flag = document.createElement("span");
+    flag.className = "tgd-top-suggest-flag";
+    flag.innerHTML = GREEK_FLAG_SVG;
+
+    const label = document.createElement("span");
+    label.className = "tgd-top-suggest-label";
+    label.textContent = "Suggest to The Greek Directory";
+
+    button.append(flag, label);
+    button.addEventListener("click", event => {
+      event.preventDefault();
+      event.stopPropagation();
+      showForm(place);
+    });
+
+    heading.insertAdjacentElement("afterend", button);
+  }
+
   function getTgdListingUrl(slug) {
     const safeSlug=String(slug||"").split("/").filter(Boolean).map(part=>encodeURIComponent(part)).join("/");
     return safeSlug ? "https://thegreekdirectory.org/listing/"+safeSlug : "";
@@ -182,38 +212,35 @@
     return preferred || nodes.find(el=>/copy (website|plus code|phone number)/.test(labelOf(el))) || null;
   }
 
-  function copyTgdLinkWithMaps(url,pane) {
-    const nativeCopy=findNativeCopyAction(pane);
-    if(!nativeCopy) {
-      // Google may omit all native copy actions for a profile. Copy directly;
-      // we deliberately do not create a substitute toast.
-      try {
-        if(navigator.clipboard?.writeText) navigator.clipboard.writeText(url);
-      } catch(error) {
-        console.warn("[TGD Maps] Clipboard unavailable:",error);
+  async function copyTgdLinkWithMaps(url) {
+    if (!url) return false;
+
+    // Invoke the Clipboard API directly from the user's click gesture.
+    // Fall back to execCommand for browsers or permissions that reject it.
+    try {
+      if (navigator.clipboard && typeof navigator.clipboard.writeText === "function") {
+        await navigator.clipboard.writeText(url);
+        return true;
       }
-      return;
+    } catch (error) {
+      console.warn("[TGD Maps] Clipboard API write failed; trying fallback.", error);
     }
 
-    const token=crypto.randomUUID();
-    let timeout;
-    const onMessage=event=>{
-      const data=event.data;
-      if(event.source!==window || event.origin!==location.origin ||
-         data?.channel!=="TGD_MAPS_NATIVE_COPY" || data?.type!=="ARMED" || data?.token!==token) return;
-      window.removeEventListener("message",onMessage);
-      clearTimeout(timeout);
-      // This is Google's original copy control. The MAIN-world bridge substitutes
-      // the TGD URL into its clipboard write, allowing Maps to show its own snackbar.
-      nativeCopy.click();
-    };
-    window.addEventListener("message",onMessage);
-    window.postMessage({channel:"TGD_MAPS_NATIVE_COPY",type:"ARM",token,url},location.origin);
-    timeout=window.setTimeout(()=>{
-      window.removeEventListener("message",onMessage);
-      // If Maps' bridge is unavailable, copy without inventing a Maps-like toast.
-      try { navigator.clipboard?.writeText?.(url); } catch {}
-    },900);
+    const field = document.createElement("textarea");
+    field.value = url;
+    field.setAttribute("readonly", "");
+    field.style.cssText = "position:fixed;left:-10000px;top:0;width:1px;height:1px;opacity:0";
+    try {
+      (document.body || document.documentElement).appendChild(field);
+      field.focus();
+      field.select();
+      return document.execCommand("copy");
+    } catch (error) {
+      console.warn("[TGD Maps] Could not copy the TGD listing URL:", error);
+      return false;
+    } finally {
+      field.remove();
+    }
   }
 
   function openTgdLink(url) {
@@ -286,149 +313,124 @@
     window.open(url,"_blank","noopener,noreferrer");
   }
 
-  // Build a genuine Greek-owned information row using Google's full native
-  // website-row structure. Its text and icon are replaced, so it cannot display
-  // a second website name or domain.
+  // Insert a purpose-built Greek-owned row after Plus Code. It deliberately
+  // does not clone the website row, so no website/globe icon or Google bindings
+  // can leak into the TGD row.
   function addGreekOwnedDetailRow(slug) {
-    if(document.querySelector(".tgd-owned-detail-row")) return;
-    const listingUrl=getTgdListingUrl(slug);
-    if(!listingUrl) return;
+    if (document.querySelector(".tgd-owned-detail-row")) return;
+    const listingUrl = getTgdListingUrl(slug);
+    if (!listingUrl) return;
 
-    const pane=document.querySelector('[role="main"]')||document;
-    const plusCodeControl=pane.querySelector('button[data-item-id="oloc"]')
+    const pane = document.querySelector('[role="main"]') || document;
+    const plusCodeControl = pane.querySelector('button[data-item-id="oloc"]')
       || pane.querySelector('[data-item-id="oloc"]')
       || [...pane.querySelectorAll('button,[role="button"]')]
-        .find(el=>/plus code/i.test(el.getAttribute("aria-label")||el.textContent||""));
-    if(!plusCodeControl) return;
+        .find(el => /plus code/i.test(el.getAttribute("aria-label") || el.textContent || ""));
+    if (!plusCodeControl) return;
 
-    const websiteRow=findNativeWebsiteRow(pane);
-    if(!websiteRow) {
-      console.warn("[TGD Maps] Native Maps row structure is not available on this profile yet.");
-      return;
-    }
-
-    // Find the full outer Plus Code row at the same structural level as the
-    // native website row, preventing the Greek-owned row from sharing its line.
-    let plusCodeRow=plusCodeControl;
-    for(let level=0;level<7 && plusCodeRow && plusCodeRow.parentElement;level++) {
-      if(plusCodeRow.tagName===websiteRow.tagName && plusCodeRow.className===websiteRow.className) break;
-      if(plusCodeRow.classList?.contains("RcCsl")) break;
-      plusCodeRow=plusCodeRow.parentElement;
-    }
-    if(!plusCodeRow || plusCodeRow===pane) plusCodeRow=plusCodeControl.parentElement;
-    if(!plusCodeRow?.parentElement) return;
-
-    const row=websiteRow.cloneNode(true);
-    row.classList.add("tgd-owned-detail-row");
-    row.dataset.tgdListingUrl=listingUrl;
-    row.setAttribute("aria-label","Greek-owned — Listed in The Greek Directory");
-    row.removeAttribute("id");
-
-    // Locate the matching content and trailing actions inside the deep clone
-    // before removing Maps' place-specific data attributes.
-    const main=row.querySelector('button[data-item-id="authority"]')
-      || row.querySelector('[data-item-id="authority"]')
-      || [...row.querySelectorAll("button")].find(el=>/website/i.test(el.getAttribute("aria-label")||""));
-    if(!main) return;
-    const openClone=[...row.querySelectorAll("button,[role='button']")]
-      .find(el=>/open website/i.test(nativeActionLabel(el)));
-    const copyClone=[...row.querySelectorAll("button,[role='button']")]
-      .find(el=>/copy website/i.test(nativeActionLabel(el)));
-    const sourceButtons=[...websiteRow.querySelectorAll("button,[role='button']")];
-    const openSource=sourceButtons.find(el=>/open website/i.test(nativeActionLabel(el)));
-    const copySource=sourceButtons.find(el=>/copy website/i.test(nativeActionLabel(el)));
-
-    // Remove IDs and active Google bindings, but preserve every structural
-    // wrapper and CSS class from the full native Maps row.
-    row.querySelectorAll("[id],[jsaction],[data-item-id]").forEach(el=>{
-      el.removeAttribute("id");
-      el.removeAttribute("jsaction");
-      el.removeAttribute("data-item-id");
-    });
-    row.querySelectorAll("a").forEach(a=>{
-      a.removeAttribute("href");
-      a.removeAttribute("target");
-      a.removeAttribute("rel");
-    });
-    main.removeAttribute("jsaction");
-    main.removeAttribute("data-item-id");
-    main.removeAttribute("aria-label");
-    main.removeAttribute("title");
-    main.removeAttribute("href");
-    main.setAttribute("aria-label","Greek-owned — Listed in The Greek Directory");
-    main.setAttribute("tabindex","0");
-    if(main.tagName==="BUTTON") main.type="button";
-
-    // Replace only the original website icon and website text.
-    const nativeIcon=main.querySelector("svg")?.parentElement || main.querySelector("svg");
-    if(nativeIcon) nativeIcon.innerHTML=GREEK_FLAG_SVG;
-    else {
-      const icon=document.createElement("span");
-      icon.className="tgd-native-flag-icon";
-      icon.innerHTML=GREEK_FLAG_SVG;
-      main.insertBefore(icon,main.firstChild);
-    }
-
-    const nativeText=main.querySelector(".Io6YTe, .fontBodyMedium")
-      || [...main.querySelectorAll("span,div")].find(el=>
-        el.children.length===0 && (el.textContent||"").trim() && !el.querySelector("svg")
-      );
-    if(nativeText) {
-      nativeText.textContent="Greek-owned";
-      nativeText.setAttribute("aria-label","Greek-owned");
-      const secondary=main.querySelector(".fontBodySmall");
-      if(secondary) secondary.textContent="Listed in The Greek Directory";
-      else {
-        const subtitle=document.createElement("div");
-        subtitle.className="fontBodySmall tgd-native-row-subtitle";
-        subtitle.textContent="Listed in The Greek Directory";
-        nativeText.insertAdjacentElement("afterend",subtitle);
+    let plusCodeRow = plusCodeControl.closest(".RcCsl");
+    if (!plusCodeRow) {
+      plusCodeRow = plusCodeControl;
+      for (let level = 0; level < 3 && plusCodeRow.parentElement && plusCodeRow.parentElement !== pane; level++) {
+        plusCodeRow = plusCodeRow.parentElement;
       }
-    } else {
-      main.appendChild(document.createTextNode("Greek-owned"));
     }
+    if (!plusCodeRow || !plusCodeRow.parentElement || plusCodeRow === pane) return;
 
-    // Redirect the native row's open/copy controls to the TGD listing.
-    if(openClone && openSource) {
-      openClone.replaceWith(cloneNativeAction(
-        openSource,"Open listing",()=>openTgdListingFromClick(listingUrl),"tgd-open-listing-action"
-      ));
-    }
-    if(copyClone && copySource) {
-      copyClone.replaceWith(cloneNativeAction(
-        copySource,"Copy TGD link",()=>copyTgdLinkWithMaps(listingUrl,pane),"tgd-copy-listing-action"
-      ));
-    }
+    const row = document.createElement("div");
+    row.className = "tgd-owned-detail-row";
+    row.dataset.tgdListingUrl = listingUrl;
+    row.setAttribute("aria-label", "Greek-owned — Listed in The Greek Directory");
+    row.setAttribute("role", "group");
 
-    // Clicking the row body copies the TGD URL using Google Maps' native
-    // copy mechanism. The two trailing controls retain their separate actions.
-    main.addEventListener("click",event=>{
-      if(event.target.closest(".tgd-open-listing-action,.tgd-copy-listing-action")) return;
+    const main = document.createElement("div");
+    main.className = "tgd-owned-main";
+    main.setAttribute("role", "button");
+    main.setAttribute("tabindex", "0");
+    main.setAttribute("aria-label", "Copy TGD listing link");
+
+    const flag = document.createElement("span");
+    flag.className = "tgd-owned-flag";
+    flag.innerHTML = GREEK_FLAG_SVG;
+
+    const copy = document.createElement("span");
+    copy.className = "tgd-owned-copy";
+    const label = document.createElement("span");
+    label.className = "tgd-owned-label";
+    label.textContent = "Greek-owned";
+    const subtitle = document.createElement("span");
+    subtitle.className = "tgd-owned-subtitle";
+    subtitle.textContent = "Listed in The Greek Directory";
+    copy.append(label, subtitle);
+    main.append(flag, copy);
+
+    const actions = document.createElement("div");
+    actions.className = "tgd-owned-actions";
+
+    const openButton = document.createElement("button");
+    openButton.type = "button";
+    openButton.className = "tgd-owned-action tgd-open-listing-action";
+    openButton.setAttribute("aria-label", "Open listing in a new tab");
+    openButton.setAttribute("title", "Open listing");
+    openButton.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><path d="M14 3h7v7M21 3 10 14M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+
+    const copyButton = document.createElement("button");
+    copyButton.type = "button";
+    copyButton.className = "tgd-owned-action tgd-copy-listing-action";
+    copyButton.setAttribute("aria-label", "Copy TGD link to clipboard");
+    copyButton.setAttribute("title", "Copy TGD link");
+    copyButton.innerHTML = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false"><rect x="8" y="8" width="12" height="13" rx="2" fill="none" stroke="currentColor" stroke-width="1.8"/><path d="M16 8V5a2 2 0 0 0-2-2H5a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h3" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/></svg>';
+
+    openButton.addEventListener("click", event => {
       event.preventDefault();
       event.stopPropagation();
-      copyTgdLinkWithMaps(listingUrl,pane);
+      openTgdListingFromClick(listingUrl);
     });
-    main.addEventListener("keydown",event=>{
-      if(event.key==="Enter" || event.key===" ") {
+    copyButton.addEventListener("click", event => {
+      event.preventDefault();
+      event.stopPropagation();
+      copyTgdLinkWithMaps(listingUrl);
+    });
+    main.addEventListener("click", event => {
+      event.preventDefault();
+      event.stopPropagation();
+      copyTgdLinkWithMaps(listingUrl);
+    });
+    main.addEventListener("keydown", event => {
+      if (event.key === "Enter" || event.key === " ") {
         event.preventDefault();
-        copyTgdLinkWithMaps(listingUrl,pane);
+        copyTgdLinkWithMaps(listingUrl);
       }
     });
 
-    // Wrap Google's horizontal information-row list so this full native row
-    // becomes a new line under Plus Code. Restore the prior value on navigation.
-    const layout=plusCodeRow.parentElement;
-    if(layout) {
-      const style=getComputedStyle(layout);
-      if(style.display==="flex" && !style.flexDirection.startsWith("column")) {
-        if(!layout.hasAttribute("data-tgd-flex-wrap-original")) {
-          layout.setAttribute("data-tgd-flex-wrap-original",layout.style.getPropertyValue("flex-wrap"));
-          layout.setAttribute("data-tgd-flex-wrap-priority",layout.style.getPropertyPriority("flex-wrap"));
+    actions.append(openButton, copyButton);
+    row.append(main, actions);
+
+    // Match the adjacent native row's height and spacing, while remaining
+    // independent of its inner icon/text/action markup.
+    const nativeStyle = getComputedStyle(plusCodeRow);
+    const nativeRect = plusCodeRow.getBoundingClientRect();
+    row.style.minHeight = Math.max(48, Math.round(nativeRect.height || 48)) + "px";
+    if (nativeStyle.paddingLeft && nativeStyle.paddingLeft !== "0px") {
+      row.style.paddingLeft = nativeStyle.paddingLeft;
+    }
+    if (nativeStyle.paddingRight && nativeStyle.paddingRight !== "0px") {
+      row.style.paddingRight = nativeStyle.paddingRight;
+    }
+
+    const layout = plusCodeRow.parentElement;
+    if (layout) {
+      const style = getComputedStyle(layout);
+      if (style.display === "flex" && !style.flexDirection.startsWith("column")) {
+        if (!layout.hasAttribute("data-tgd-flex-wrap-original")) {
+          layout.setAttribute("data-tgd-flex-wrap-original", layout.style.getPropertyValue("flex-wrap"));
+          layout.setAttribute("data-tgd-flex-wrap-priority", layout.style.getPropertyPriority("flex-wrap"));
         }
-        layout.style.setProperty("flex-wrap","wrap","important");
+        layout.style.setProperty("flex-wrap", "wrap", "important");
       }
     }
-    plusCodeRow.insertAdjacentElement("afterend",row);
+
+    plusCodeRow.insertAdjacentElement("afterend", row);
   }
 
   // Create a clean TGD button using the native Google Maps Suggest an edit
@@ -439,8 +441,13 @@
     const candidates=[...pane.querySelectorAll('button,[role="button"],a')]
       .filter(el=>!el.closest("#tgd-form")&&!el.classList.contains("tgd-bottom-suggest"))
       .filter(el=>{
-        const label=(el.getAttribute("aria-label")||el.textContent||"").replace(/\s+/g," ").trim();
-        return /^suggest an edit(?:\b|$)/i.test(label) && el.getClientRects().length>0;
+        const label=[
+          el.getAttribute("aria-label"),
+          el.getAttribute("data-tooltip"),
+          el.getAttribute("title"),
+          el.textContent
+        ].filter(Boolean).join(" ").replace(/\s+/g," ").trim();
+        return /\bsuggest an edit\b/i.test(label) && el.getClientRects().length>0;
       })
       .sort((a,b)=>(a.textContent||"").length-(b.textContent||"").length);
     const googleButton=candidates[0];

@@ -1,341 +1,406 @@
-# The Greek Directory
+# The Greek Directory — Platform
 
-Developer documentation for **The Greek Directory**, a static-first web application for discovering, managing, and promoting Greek-owned and Greek-themed businesses. The repository contains the public website, listing search experience, generated listing pages, business owner portal, admin portal, PWA assets, Cloudflare Worker code, Supabase Edge Function source mirrors, and deployment workflows.
+> **Repository:** [`thegreekdirectory/platform`](https://github.com/thegreekdirectory/platform)  
+> **Default branch:** `main`  
+> **Related technical reference:** [Supabase implementation and database reference](./SUPABASE.md)
 
-> **Supabase source of truth:** `SUPABASE.md` is the authoritative reference for the database schema, tables, views, RPC/database functions, RLS policies, storage configuration, Edge Functions, authentication setup, and analytics architecture. This README summarizes how the application uses Supabase; consult `SUPABASE.md` before making backend or policy changes.
+This repository contains the website and application code for **The Greek Directory**, a directory and discovery platform for Greek and Greek-affiliated businesses, organizations, churches, schools, services, and community events. It is a static-first web application with browser-side JavaScript, Cloudflare Pages Functions, Supabase, and Cloudflare Workers/Images integrations.
+
+This document describes the repository as inspected on **November 3, 2026**. It distinguishes checked-in implementation from remote platform configuration that was not accessible during the audit.
+
+## Contents
+
+- [Project overview](#project-overview)
+- [Verified capabilities](#verified-capabilities)
+- [Architecture](#architecture)
+- [Technology stack](#technology-stack)
+- [Repository layout](#repository-layout)
+- [Application and data flows](#application-and-data-flows)
+- [Supabase integration](#supabase-integration)
+- [Authentication and authorization](#authentication-and-authorization)
+- [Configuration and secrets](#configuration-and-secrets)
+- [Local development](#local-development)
+- [Build and deployment](#build-and-deployment)
+- [GitHub Actions](#github-actions)
+- [Testing and validation](#testing-and-validation)
+- [Security and operational notes](#security-and-operational-notes)
+- [Troubleshooting](#troubleshooting)
+- [Maintenance](#maintenance)
+- [License and attribution](#license-and-attribution)
 
 ## Project overview
 
-The application serves a searchable directory of businesses and organizations with public listing pages, maps, category/location filters, owner-managed profile data, admin-managed publishing workflows, and analytics reporting.
+The application serves a public directory of Greek and Greek-affiliated listings. Its codebase includes the public directory, individual listing pages, map and category experiences, a business-owner portal, an administration interface, event discovery and submission, shortlinks, analytics, and Progressive Web App (PWA) support.
 
-The current implementation is a browser-heavy static site:
+The repository is not a conventional single-page-app build. Most pages are HTML files, with page-specific JavaScript and shared CSS. Supabase supplies the application database, authentication, PostgREST API, RPCs, and serverless functions. Cloudflare Pages-style Functions handle server-side routes and privileged request flows. A separate Cloudflare Worker handles Cloudflare Images uploads.
 
-- Public pages are HTML/CSS/JavaScript files served directly from the repository.
-- Public listing data is read from Supabase in the browser with the anon key and RLS.
-- Individual listing pages under `listing/` are generated static HTML pages from `listing-template.html`.
-- Admin and business owner workflows call Supabase Edge Functions and the Supabase JavaScript client.
-- PWA support adds offline shell caching, starred listings, settings, and mobile-app-style navigation.
+## Verified capabilities
 
-## Features
+The following capabilities are represented in the current `main` branch source:
 
-### Public directory
+| Area | Implemented behavior |
+|---|---|
+| Public directory | Browse and search listings; filter by category and location; display listing details, contact information, hours, photos, video, social links, reviews, and custom calls to action. |
+| Maps and location | Map and listing views, geolocation-related behavior, listing coordinates, and Google Place ID matching. |
+| Listing relationships | Parent/child and chain-location support, plus listing shortlinks. |
+| Business portal | Supabase email/password authentication, owner profile/contact management, listing editing, analytics display, and image/video upload flows. |
+| Administration | Admin pages for listings, owners, requests, shortlinks, categories/subcategories, events, and analytics. The browser calls the `admin-proxy` Supabase Edge Function for privileged operations. |
+| Events | Public event discovery, search and filtering, event detail pages, region pages, event submission and edit suggestions, event shortlinks, and calendar feeds/downloads (`.ics`). |
+| Analytics | Listing action tracking, raw analytics records, a per-listing summary table, and a scheduled summary refresh workflow. |
+| PWA | Web app manifests, service workers, offline page/support, and browser-side saved/starred experiences. |
+| SEO and static output | Listing templates, generated listing pages, metadata/structured-data code, sitemap generators, redirects, and response headers. |
+| Greek-owned Maps integration backend | Deployed Supabase functions and database objects for Place ID lookup, suggestion submission, and review. The Chrome extension itself is not present as a complete extension project in this repository. |
 
-- Home page with search autocomplete, featured listings, recent listings, category navigation, SEO metadata, and PWA registration.
-- Listings page with full client-side search/filtering, category and subcategory filters, location filters, radius filtering, open/closed status filters, pricing and coming-soon filters, grid/list layouts, map and split-map views, URL-synced filters, and starred-only views.
-- Leaflet-based map UI with marker clustering and directions links.
-- Static generated listing pages with structured data, owner/contact details, photos, reviews, CTAs, hours, shortlinks, and analytics hooks.
-- Submission and suggestion forms backed by Supabase intake tables.
-- Reserved redirects for URL areas that exist in routing but are not active features in this repo, including events, news, posts, resources, places, and claim pages.
-
-### Business owner portal
-
-- Supabase Auth sign-up/sign-in/recovery for business owners.
-- Listing claim flow using `business_owners.confirmation_key` or claimable unowned rows.
-- Owner dashboard for editing allowed listing fields, owner visibility settings, hours, media, links, reviews, and CTAs.
-- Owner analytics views using listing analytics summaries and recent event data.
-- Cloudflare Images upload support through a Worker-generated direct upload URL.
-
-### Admin portal
-
-- GitHub-PAT-authenticated admin UI.
-- CRUD for listings, business owners, listing requests, suggestions, subcategories, analytics, and shortlinks via the `admin-proxy` Supabase Edge Function.
-- Static listing page generation from `listing-template.html` and GitHub Contents API writes.
-- CSV import helpers, sitemap updates, Cloudflare Images upload support, custom/system shortlink management, and listing analytics inspection.
-
-### PWA/offline support
-
-- Web app manifest for the public app and a separate business portal manifest.
-- Service worker with static/runtime caches and offline fallback page.
-- IndexedDB-backed starred listings for installed/PWA mode.
-- PWA dock, settings, directions helpers, and offline translation support.
+Feature availability is not the same as successful production operation. See [Security and operational notes](#security-and-operational-notes) and [the Supabase reference](./SUPABASE.md) for verified implementation gaps and live database findings.
 
 ## Architecture
 
 ```mermaid
 flowchart TD
-  Visitor[Public visitor] --> StaticSite[Static HTML/CSS/JS]
-  StaticSite --> SupabaseAnon[Supabase JS anon client]
-  SupabaseAnon --> Listings[(public.listings)]
-  SupabaseAnon --> Categories[(public.category_subcategories)]
-  StaticSite --> PWA[Service worker + IndexedDB]
-  StaticSite --> ListingPages[Generated listing/*.html pages]
+    Browser[Browser: HTML, CSS, vanilla JS, PWA]
+    Pages[Cloudflare Pages Functions and middleware]
+    Supa[(Supabase project\nPostgreSQL, Auth, Data API, RPCs)]
+    Edge[Supabase Edge Functions]
+    Worker[Cloudflare Images Worker]
+    Images[Cloudflare Images]
+    GH[GitHub repository]
+    Action[GitHub Actions\nnightly analytics refresh]
 
-  Owner[Business owner] --> BusinessPortal[business.html + JS]
-  BusinessPortal --> SupabaseAuth[Supabase Auth]
-  BusinessPortal --> UpdateBP[Edge Function: update-listing-bp]
-  UpdateBP --> Owners[(public.business_owners)]
-  UpdateBP --> Listings
-  BusinessPortal --> ImageWorker[Cloudflare Worker: tgd-images-upload]
-  ImageWorker --> CFImages[Cloudflare Images]
-
-  Admin[Admin] --> AdminPortal[admin.html + js/admin.js]
-  AdminPortal --> AdminProxy[Edge Function: admin-proxy]
-  AdminProxy --> SupabaseService[Supabase service role]
-  SupabaseService --> Listings
-  SupabaseService --> Requests[(listing_requests)]
-  SupabaseService --> Suggestions[(listing_suggestions)]
-  SupabaseService --> Analytics[(listing_analytics_summary)]
-  AdminPortal --> GitHubAPI[GitHub Contents API]
-  GitHubAPI --> Repo[(this repository)]
-
-  GitHubActions[GitHub Actions] --> GitHubPages[GitHub Pages deployment]
-  GitHubActions --> RefreshRPC[refresh_listing_analytics_summary RPC]
+    Browser -->|public reads, Auth, RLS-protected writes| Supa
+    Browser -->|event routes, submissions, print and feeds| Pages
+    Pages -->|server-side REST with Pages secrets| Supa
+    Browser -->|authenticated function requests| Edge
+    Edge -->|service-role or scoped database access| Supa
+    Browser -->|request one-time upload URL| Worker
+    Worker -->|Cloudflare Images API| Images
+    Browser -->|direct upload using one-time URL| Images
+    Action -->|refresh_listing_analytics_summary RPC| Supa
+    Edge -->|GitHub API operations| GH
 ```
+
+### Hosting and runtime distinction
+
+- The repository contains Cloudflare Pages Function conventions and routes under `functions/`, plus `_headers` and `_redirects` files. This confirms that the source is designed for a Cloudflare Pages-style runtime.
+- The connected GitHub repository reports GitHub Pages as disabled. GitHub Pages is **not** the verified hosting target.
+- The Cloudflare Pages account/project settings, production branch, custom-domain bindings, build configuration, and deployment history were not available through the connected integrations. Consequently, the live Cloudflare deployment cannot be independently certified from this audit.
+- The root `CNAME` file contains `branch.thegreekdirectory.org`. Treat that as a repository configuration artifact, not proof of which domain is currently serving the project.
 
 ## Technology stack
 
-| Area | Implementation |
-| --- | --- |
-| Frontend | Static HTML, vanilla JavaScript, CSS, Tailwind CSS output |
-| CSS tooling | Tailwind CSS v4 CLI plus a local utility CSS build script |
-| Data/API | Supabase Postgres, Supabase Auth, Supabase Edge Functions, Supabase JS v2 CDN |
-| Maps/geocoding | Leaflet, Leaflet.markercluster, browser geolocation, Nominatim fallback geocoding |
-| Media | Cloudflare Images through `cloudflare/tgd-images-upload.js` |
-| PWA | Web App Manifest, service workers, Cache API, IndexedDB |
-| Admin publishing | GitHub Contents API writes to generated static pages and sitemaps |
-| Deployment | GitHub Pages workflow; production/branch domains configured by repository files |
-| Translation widget | GTranslate script on public pages |
+| Layer | Verified technology |
+|---|---|
+| Frontend | HTML, CSS, browser JavaScript; no checked-in React, Vue, Angular, or TypeScript application build. |
+| CSS build | Tailwind CSS CLI `^4.2.2`, with `@tailwindcss/cli` `^4.2.2`. |
+| Browser Supabase client | Supabase JavaScript client v2 loaded by the site; the project URL and public anon key are embedded in browser-facing code. |
+| Database/backend | Supabase PostgreSQL, Auth, PostgREST, SQL functions/RPCs, and Supabase Edge Functions. |
+| Server-side web runtime | Cloudflare Pages Functions and middleware under `functions/`. |
+| Image upload | Cloudflare Worker and Cloudflare Images Direct Creator Upload flow. |
+| Scheduled task | GitHub Actions workflow calling a Supabase RPC. |
+| Edge Function runtime | Deno-based Supabase Edge Functions. |
 
-## Repository structure
+The checked-in `package.json` contains only the Tailwind build/watch scripts and the Tailwind CLI dependencies. The lockfile is committed. Other browser libraries are loaded by page markup or remote endpoints rather than declared as npm dependencies.
+
+## Repository layout
+
+The repository tree was enumerated recursively. The following is a functional map of the important source areas; generated pages and static assets are intentionally summarized rather than listed individually.
 
 ```text
 .
-├── *.html                         # Public pages, admin portal, business portal, PWA pages
-├── css/                           # Page-specific CSS files
-├── js/                            # Public, admin, business, forms, and shared browser scripts
-│   └── pwa/                       # PWA app shell, dock, settings, storage, starred listings
-├── listing/                       # Generated static listing pages
-├── listing-template.html          # Template used by admin generation workflow
-├── images/                        # Local listing/category/logo assets still stored in repo
-├── assets/images/logo/            # Logo/favicon source assets
-├── partials/                      # Header/footer partials loaded client-side
-├── widgets/                       # Embeddable widgets
-├── cloudflare/                    # Cloudflare Worker source for image uploads
-├── functions/                     # Cloudflare Pages middleware for gated branch access
-├── supabase/edge-functions/       # Source mirrors/reference copies for deployed Edge Functions
-├── supabase/sql/                  # SQL/reference exports
-├── .github/workflows/             # GitHub Pages deploy and analytics refresh workflows
-├── src/input.css                  # Tailwind input
-├── src/output.css                 # Generated CSS output committed for static hosting
-├── scripts/build-tailwind-output.js
-├── generate-sitemap.js            # Node sitemap generator using listings-database.json
-├── listings-database.json         # Static listing data snapshot used by sitemap tooling
-├── SUPABASE.md                    # Authoritative Supabase audit/reference
-└── README.md                      # This file
+├── .github/
+│   └── workflows/
+│       └── refresh-analytics-summary.yml
+├── assets/                         # Static image and visual assets
+├── cloudflare/
+│   └── tgd-images-upload.js         # Cloudflare Images upload Worker source
+├── css/                            # Site, portal, and page stylesheets
+├── functions/                      # Cloudflare Pages Functions and middleware
+│   ├── _middleware.js
+│   ├── edit/                        # Event edit-suggestion route
+│   ├── event/                       # Event detail and single-event ICS routes
+│   ├── events/                      # Events index, regions, feeds, shared helpers
+│   ├── print/                       # Listing print/PDF route
+│   └── submit/                       # Event submission route
+├── images/                          # Static image assets
+├── js/                              # Browser application code
+│   ├── pwa/                         # PWA-related modules
+│   ├── admin.js                     # Administration interface logic
+│   ├── admin-events.js              # Event administration logic
+│   ├── business-auth.js             # Business portal auth/session UI
+│   ├── business-dashboard.js        # Business-owner dashboard
+│   ├── events.js                    # Public events client
+│   ├── listing-page.js               # Individual listing page behavior
+│   ├── listings.js                  # Public directory behavior
+│   └── supabase-config.js           # Shared Supabase Auth/client helpers
+├── listing/                         # Generated individual listing HTML pages
+├── partials/                        # Shared header/footer HTML partials
+├── scripts/
+│   └── build-tailwind-output.js     # Tailwind CSS build script
+├── src/                              # Tailwind source and generated CSS output
+├── supabase/
+│   ├── edge-functions/              # Checked-in reference copies of some functions
+│   └── sql/                         # SQL scripts/data artifacts, not full migrations
+├── widgets/                          # Reusable page/widget assets
+├── index.html                        # Main public landing page
+├── listings.html                     # Public directory page
+├── listing-template.html             # Listing page template
+├── events.html                       # Events page shell
+├── business.html                     # Business portal shell
+├── admin.html                        # Admin portal shell
+├── manifest.json                     # Public PWA manifest
+├── business-manifest.json            # Business portal PWA manifest
+├── service-worker.js                 # Public-site service worker
+├── business-sw.js                    # Business portal service worker
+├── _headers                          # Hosting response-header rules
+├── _redirects                        # Hosting redirect rules
+├── generate-sitemap.js               # Listing/general sitemap generation
+├── generate-events-sitemap.js        # Event sitemap generation
+├── package.json
+├── package-lock.json
+├── README.md
+└── SUPABASE.md
 ```
 
-## Supabase integration overview
+Other root HTML files provide pages such as `about.html`, `categories.html`, `map.html`, `submit-listing.html`, `suggest-edit.html`, `settings.html`, `tiers.html`, `offline.html`, `reserved.html`, and `404.html`. XML sitemap files and `listings-database.json` are checked in as static/generated data artifacts.
 
-The frontend uses a hard-coded Supabase project URL and anon key in browser scripts. Public reads depend on Supabase RLS policies, not on hiding the anon key. Administrative and owner write paths use server-side Edge Functions where service-role access is needed after custom authorization checks.
+### Generated and non-source content
 
-Primary integration points:
+The `listing/` directory contains generated per-listing HTML pages. Static images, icons, logos, favicons, sitemap outputs, and package-lock metadata are not application source code in the same sense as the editable scripts. They were inventoried but were not individually reverse-engineered as code.
 
-- `js/index.js` loads visible listings for home page cards and search predictions.
-- `js/listings.js` loads all visible listings for the directory, map, filters, sorting, and starred listing synchronization.
-- `js/supabase-config.js`, `js/business-auth.js`, and `js/business-dashboard.js` implement business owner auth, claim, dashboard, and update flows.
-- `js/submit.js` inserts new listing requests into `listing_requests`.
-- `js/suggest-edit.js` inserts edits into `listing_suggestions`.
-- `js/admin.js` calls the `admin-proxy` Edge Function for service-role-backed admin operations.
+## Application and data flows
 
-### Edge Functions
+### Public directory
 
-The deployed Edge Functions are mirrored in `supabase/edge-functions/` for review and editing:
+1. The browser loads static HTML/CSS/JS.
+2. Frontend scripts initialize the Supabase JavaScript client using the public project URL and anon key.
+3. Public data is read through the Supabase Data API and RPCs.
+4. PostgreSQL grants and RLS policies constrain the rows visible to the `anon` role.
+5. Listing-specific browser code renders detail pages, hours/status, maps, galleries, social links, and other listing fields.
 
-| Function | Purpose |
-| --- | --- |
-| `admin-proxy` | GitHub-token-authenticated admin API that performs CRUD on listings, owners, requests, suggestions, analytics, subcategories, and shortlinks using the service role key. |
-| `update-listing-bp` | Authenticated business portal write endpoint. Verifies the caller's Supabase JWT and `business_owners.owner_email`, then applies an allowlist of owner-editable fields. |
-| `listing-server-time` | Returns authoritative UTC time for open/closed calculations and disables caching. |
-| `update-github-file` | Uses a server-side `GITHUB_TOKEN` to update repository files through the GitHub Contents API. |
+### Business-owner portal
 
-See `SUPABASE.md` for exact deployed function metadata, environment variables, RLS context, and implementation details.
+1. The portal uses the shared `TGDAuth` helpers in `js/supabase-config.js` and the UI/session code in `js/business-auth.js`.
+2. It uses Supabase email/password Auth and maps the authenticated user to `public.business_owners` and `public.listings`.
+3. The current `js/business-dashboard.js` code reads and updates `listings` through the browser Supabase client; the database's `tgd_listings_update` policy is therefore an important authorization boundary.
+4. Media upload requests go to the Cloudflare Images Worker to request a one-time upload URL; the browser then uploads directly to Cloudflare Images.
 
-## Data model overview
+A deployed `update-listing-bp` Edge Function also implements JWT validation, owner verification, and field allowlists, but the current browser dashboard source does not reference that function. Do not assume it is the active owner-write path without changing or tracing the frontend.
 
-High-level tables used by the application:
+### Administration
 
-| Table | Role in the app |
-| --- | --- |
-| `listings` | Core business/organization profile data: identity, category, tier, location, contact info, media, hours, social links, reviews, SEO, visibility, claim status, and closure flags. |
-| `business_owners` | Owner/contact metadata, claim keys, owner auth matching fields, visibility preferences, and claim lockout state. |
-| `listing_analytics` | Raw per-listing analytics events such as views, calls, website clicks, directions, shares, and video actions. |
-| `listing_analytics_summary` | Pre-aggregated counters by listing/action/time window for dashboards and admin reporting. |
-| `listing_requests` | Public intake queue for new listing submissions. |
-| `listing_suggestions` | Public/community edit suggestions awaiting admin review. |
-| `shortlinks` | Shortlink definitions for listing redirects, including system-generated and owner-customized links. |
-| `shortlink_events` | Shortlink click log with path-based event tracking. |
-| `category_subcategories` | Category/subcategory lookup data and schema.org type mapping. |
+1. `js/admin.js` obtains a GitHub token from the admin UI and stores it in browser `localStorage` under `tgd_admin_token`.
+2. Requests are sent to the deployed `admin-proxy` Edge Function with the `x-github-token` header.
+3. The Edge Function creates a Supabase service-role client and performs privileged operations for supported actions.
 
-```mermaid
-erDiagram
-  listings ||--o| business_owners : owns
-  listings ||--o{ listing_analytics : emits
-  listings ||--|| listing_analytics_summary : summarizes
-  listings ||--o{ shortlinks : has
-  listing_analytics }o--|| listing_analytics_summary : triggers_increment
-  shortlink_events }o..o{ shortlinks : path
+**Security warning:** the deployed `admin-proxy` has JWT verification disabled and its current custom check only tests whether GitHub's repository metadata endpoint returns a successful response. It does not verify the caller's GitHub identity or `permissions.push`/`admin`. A successful repository read is not an adequate admin authorization check for a service-role API. See [the Supabase security section](./SUPABASE.md#edge-function-authorization-findings).
+
+### Events
+
+- `js/events.js` loads public events in the browser using the anon key and the event RPCs.
+- Cloudflare Pages Functions serve event index/region/detail routes, ICS endpoints, event submission, and event edit suggestions.
+- Event submission and edit-suggestion server routes use `SUPABASE_SERVICE_ROLE_KEY`, because the corresponding intake tables do not grant public insert policies.
+- Admin event CRUD is handled through `admin-proxy` actions.
+
+### Analytics
+
+- Browser interactions insert permitted raw actions into `public.listing_analytics`.
+- The `trg_after_analytics_insert` trigger calls `increment_listing_analytics()` to update the per-listing summary row.
+- The GitHub Actions workflow also calls `refresh_listing_analytics_summary()` on a daily schedule to recompute the summary from raw event records.
+
+## Supabase integration
+
+The connected Supabase project is `luetekzqrrgdxtopzvqw`, with project URL:
+
+```text
+https://luetekzqrrgdxtopzvqw.supabase.co
 ```
 
-`SUPABASE.md` includes the complete schema, constraints, indexes, triggers, functions, RLS policies, and known legacy database objects.
+The current live database has the application tables, views, policies, triggers, and RPCs documented in [SUPABASE.md](./SUPABASE.md). That document is the detailed reference for:
+
+- the live `public` schema and all 16 application tables;
+- the `shortlink_event_summary` view;
+- RLS policies and grants;
+- database functions, triggers, constraints, indexes, and extensions;
+- the 59 live migration-history entries;
+- the eight deployed Edge Functions and their JWT-verification settings;
+- security/performance advisor findings; and
+- differences between live Supabase state and files checked into this repository.
+
+The Supabase repository folder is **not** a complete source-of-truth migration history. There is no `supabase/migrations/` directory or `supabase/config.toml` in the inspected tree.
 
 ## Authentication and authorization
 
-### Public users
+### Business-owner authentication
 
-Public visitors are anonymous. They can read visible listing data and submit listing requests/suggestions according to Supabase RLS.
+`js/supabase-config.js` wraps Supabase Auth operations for the portal, including account creation, password sign-in, sign-out, session/user lookup, password reset/update, and auth-state notifications. The implementation uses email/password flows and the production site URL for relevant confirmation/recovery redirects.
 
-### Business owners
+The database links a business owner to a listing through `public.business_owners.listing_id`. Listing access is enforced by RLS policies that reference the current JWT and owner information. Exact policy expressions are in [SUPABASE.md](./SUPABASE.md#row-level-security-policies).
 
-Business owners authenticate with Supabase Auth. Sign-up and claim flows validate a listing against `business_owners`, create or update an owner record, and store owner metadata for subsequent dashboard access. Password recovery and email redirects use the production URL because Supabase redirect origins are whitelisted.
+### Administrative access
 
-Owner writes should go through `update-listing-bp`. That function validates the JWT, matches the caller's email against `business_owners.owner_email`, synchronizes missing owner email values, and only writes fields explicitly allowed for owners.
+The admin browser UI currently stores a GitHub token in `localStorage` and sends it to `admin-proxy`. This is a separate authorization mechanism from Supabase business-owner Auth and must not be interpreted as a normal authenticated-user RLS flow. The deployed Edge Function's validation is insufficient for privileged service-role operations; the current implementation requires a security review before the admin surface is considered safely protected.
 
-### Admins
+## Configuration and secrets
 
-The admin portal does not use Supabase Auth. It accepts a GitHub personal access token, stores it in browser local storage, and sends it to `admin-proxy` as `x-github-token`. The Edge Function validates the token against the GitHub repository API and then uses the Supabase service role key for database operations.
+There is no checked-in `.env`, `.dev.vars`, `wrangler.toml`, or Supabase `config.toml` in the audited tree. The following names are derived from source references; values must be configured in the relevant provider dashboard or secret store. **Never copy secret values into this repository or documentation.**
 
-## Analytics overview
+| Where | Variable/configuration | Purpose |
+|---|---|---|
+| Browser source | Supabase project URL and public anon key constants | Public client initialization. The anon key is intentionally browser-visible; RLS/grants must secure the database. |
+| Supabase Edge Functions | `SUPABASE_URL` | Server-side project API URL. |
+| Supabase Edge Functions | `SUPABASE_SERVICE_ROLE_KEY` | Privileged service-role access used by selected functions. Keep server-side only. |
+| Supabase Edge Functions | `SUPABASE_ANON_KEY` | Used by `update-listing-bp` to verify a caller's JWT through `auth.getUser()`. |
+| Supabase Edge Functions | `GITHUB_TOKEN` | Used by `update-github-file` for GitHub Contents API requests. |
+| Cloudflare Pages Functions | `SUPABASE_SERVICE_ROLE_KEY` | Used by event submission/edit and server-rendered listing/event routes. |
+| Cloudflare Pages Functions | `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_API_TOKEN` | Used by the listing print/PDF Browser Rendering route. |
+| Cloudflare Images Worker | `CLOUDFLARE_ACCOUNT_ID`, `CLOUDFLARE_IMAGES_API_TOKEN` | Creates Cloudflare Images upload URLs and performs server-side image API operations. |
+| GitHub Actions | `SUPABASE_URL`, `SUPABASE_SERVICE_ROLE_KEY` | Used by the daily analytics-summary refresh workflow. |
+| Admin browser | GitHub token entered through the admin UI | Stored in `localStorage` as `tgd_admin_token`; this is not a repository secret and has security implications. |
 
-Analytics are centered on the current `listing_analytics` and `listing_analytics_summary` tables:
+The production auth redirect URL is hard-coded in `js/supabase-config.js` as `https://thegreekdirectory.org`. Source comments state that preview `*.pages.dev` URLs are not currently on the Supabase Auth allowlist. Actual Auth dashboard provider, redirect, SMTP, and confirmation settings were not accessible in the connected Supabase interface.
 
-1. Client code inserts or admin/owner workflows read raw listing events from `listing_analytics`.
-2. A database trigger runs after inserts and increments `listing_analytics_summary` counters.
-3. Dashboards and admin tools read pre-aggregated summary rows for fast reporting.
-4. A scheduled GitHub Actions workflow calls `refresh_listing_analytics_summary` daily to recompute summary windows.
-
-`SUPABASE.md` documents a design caveat: incremental time-window counters need periodic refresh because they increment on insert and do not automatically decrement as events age out of a window. It also identifies legacy analytics SQL functions that reference old/nonexistent tables; do not build new functionality on those legacy functions.
-
-## Search functionality
-
-Search is implemented in two layers:
-
-- **Home page search:** `js/index.js` loads a limited set of visible listings from Supabase and provides autocomplete-style predictions across business name, tagline, category, city, and state before navigating to `/listings?q=...`.
-- **Listings page search/filtering:** `js/listings.js` loads visible listings once, then applies client-side filtering and sorting across normalized business names, taglines, descriptions, addresses, category/subcategory selection, location fields, radius, hours status, online-only status, pricing, coming-soon status, and starred status.
-
-The database also contains a `search_listings` RPC documented in `SUPABASE.md`, but current browser search primarily uses client-side filtering after loading visible listing rows.
-
-## Listing and event architecture
-
-Listings have two representations:
-
-1. **Database rows** in Supabase (`listings` plus related owner, analytics, and shortlink records).
-2. **Generated static pages** in `listing/`, built from `listing-template.html` by the admin portal.
-
-The admin generation flow reads listing data, resolves an appropriate shortlink, applies template replacements, writes `listing/<slug>.html` to GitHub, and updates sitemap data where requested. Public directory and home pages use live Supabase data, while individual listing URLs are static generated pages committed to the repository.
-
-The repository currently reserves `/event` and `/events` routes through `_redirects`, but there is no active event data model or event UI in the current implementation. Treat events as reserved URL space rather than an implemented product area unless the codebase adds corresponding data and pages.
-
-## Deployment architecture
-
-### GitHub Pages
-
-`.github/workflows/static.yml` deploys the entire repository as static content to GitHub Pages on pushes to `main` and manual workflow runs. The workflow uploads `.` as the Pages artifact, so generated assets and static listing pages must be committed to be deployed.
-
-`CNAME` configures the current Pages custom domain for this branch/deployment.
-
-### Supabase
-
-Supabase is the hosted backend for data, auth, Edge Functions, and analytics. Backend details are maintained in `SUPABASE.md`; deployed Edge Function source mirrors are under `supabase/edge-functions/`.
-
-### Cloudflare
-
-The repository includes two Cloudflare-oriented pieces:
-
-- `cloudflare/tgd-images-upload.js`: Worker for Cloudflare Images upload flows used by admin and business portal media uploads.
-- `functions/_middleware.js`: Cloudflare Pages middleware that gates a branch/preview deployment behind `?access=granted` and rewrites same-origin asset/navigation URLs to preserve the access parameter.
-
-### Scheduled analytics refresh
-
-`.github/workflows/refresh-analytics-summary.yml` runs daily at midnight UTC and can also be run manually. It calls the Supabase REST RPC endpoint for `refresh_listing_analytics_summary` using repository secrets.
-
-## Development workflow
+## Local development
 
 ### Prerequisites
 
-- Node.js and npm for Tailwind/build tooling.
-- A static file server for local browser testing.
-- Network access to Supabase/CDNs for live data, maps, Supabase JS, GTranslate, and third-party assets.
-- Optional admin/business testing credentials if validating authenticated workflows.
+- Git
+- Node.js and npm compatible with the committed `package-lock.json`
+- Python 3 (only if using the simple static preview command below)
+
+No Node `engines` range or repository-specific local runtime configuration was found.
 
 ### Install dependencies
 
 ```bash
-npm install
+npm ci
 ```
 
-### Build CSS
+This installs the exact dependency versions represented by the committed lockfile.
+
+### Build Tailwind CSS
 
 ```bash
 npm run tailwind:build
 ```
 
-This runs `scripts/build-tailwind-output.js`, which invokes the Tailwind CLI and appends project-specific utility CSS needed by the static pages.
+This runs `scripts/build-tailwind-output.js` to regenerate the checked-in Tailwind output. Run it after changing Tailwind source or content classes that need to appear in the generated stylesheet.
 
-For local iterative CSS work:
+For repeated rebuilds during CSS work:
 
 ```bash
 npm run tailwind:watch
 ```
 
-### Run locally
+The watch script is a shell loop that re-runs the build approximately every two seconds; it is not a framework dev server.
 
-Because the app is static, use any local static server from the repository root:
+### Static preview
+
+From the repository root:
 
 ```bash
 python3 -m http.server 8000
 ```
 
-Then open `http://localhost:8000/`.
+Then open `http://localhost:8000`.
 
-Notes for local development:
+This serves static files only. It does **not** execute Cloudflare Pages Functions, the Pages middleware, the Cloudflare Images Worker, or Supabase Edge Functions. Routes that depend on those server-side runtimes (for example, event submission, server-rendered event pages, ICS routes, and PDF generation) cannot be fully validated by this static server alone. No repository-local Cloudflare Pages dev script or Wrangler configuration was found, so a full local Functions environment is not preconfigured in this repository.
 
-- Browser pages still call the production Supabase project and external CDNs.
-- Some auth redirects intentionally use `https://thegreekdirectory.org`.
-- Service workers can cache aggressively; use a private window, unregister service workers, or hard refresh when debugging static assets.
-- GitHub Pages redirects in `_redirects` may not be honored by a simple local file server.
+### Supabase connection
 
-### Generate sitemap snapshot
+The browser client already points to the live project in the checked-in source. Do not use the live project as an unrestricted development database. A separate development project or controlled test environment is not documented in the repository. The Supabase Auth redirect allowlist may also prevent local callback/recovery flows until the dashboard configuration is deliberately updated.
 
-```bash
-node generate-sitemap.js
-```
+## Build and deployment
 
-This script reads `listings-database.json` and writes `sitemap.xml`. The admin portal also contains sitemap update logic that writes through GitHub API flows.
+### Verified build behavior
 
-## Environment variables and secrets
+- The only npm build script is `tailwind:build`.
+- The only other npm script is `tailwind:watch`.
+- No application bundler, TypeScript compilation step, npm test command, npm lint command, or repository deployment script is defined in `package.json`.
+- Static HTML, JavaScript, CSS, assets, generated listing pages, and sitemap files are checked into the repository.
 
-The static browser app does not read local `.env` files. Configuration discoverable in the repository is either hard-coded for public browser use or expected as hosted platform secrets.
+### Hosting-related files
 
-| Location | Variable/secret | Purpose |
-| --- | --- | --- |
-| Supabase Edge Functions | `SUPABASE_URL` | Supabase project URL for server-side clients. |
-| Supabase Edge Functions | `SUPABASE_ANON_KEY` | Used by `update-listing-bp` to validate caller JWT via an anon client. |
-| Supabase Edge Functions | `SUPABASE_SERVICE_ROLE_KEY` | Service-role database access for `admin-proxy` and `update-listing-bp`. |
-| Supabase Edge Functions | `GITHUB_TOKEN` | Used by `update-github-file` to update repository files. |
-| GitHub Actions secrets | `SUPABASE_URL` | REST endpoint base URL for scheduled analytics refresh. |
-| GitHub Actions secrets | `SUPABASE_SERVICE_ROLE_KEY` | Authorization for scheduled analytics refresh RPC. |
-| Cloudflare Worker | `CLOUDFLARE_ACCOUNT_ID` | Cloudflare Images account identifier. |
-| Cloudflare Worker | `CLOUDFLARE_IMAGES_API_TOKEN` | Cloudflare Images API token. |
-| Admin browser session | GitHub PAT | Entered in the admin UI and sent as `x-github-token` to `admin-proxy`. |
+| File | Behavior |
+|---|---|
+| `functions/` | Cloudflare Pages Functions routes and middleware. |
+| `_redirects` | Extensionless URL redirects, directory/map shortcuts, and reserved-path redirects. Event redirects in this file are commented out. |
+| `_headers` | Sets `X-Robots-Tag: noindex, nofollow` globally and stricter directives for `/admin`. |
+| `CNAME` | Contains `branch.thegreekdirectory.org`. |
 
-The Supabase anon key is intentionally present in browser JavaScript. Do not put service-role keys, GitHub tokens, or Cloudflare API tokens in browser code.
+**Important:** the global noindex header and branch-subdomain CNAME are environment-sensitive. Verify these before using the repository state for a public production deployment. GitHub's repository metadata reports `has_pages: false`; no GitHub Pages deployment is configured in the inspected settings.
 
-## Important implementation notes
+### Cloudflare deployment limitations
 
-- `SUPABASE.md` overrides this README for every Supabase detail.
-- The repository contains committed generated assets (`src/output.css`, `listing/*.html`, sitemaps). Changes to generation logic may require regenerating and committing outputs.
-- Public listing rows are live Supabase reads; individual listing pages are static generated files and can drift until regenerated.
-- Admin writes bypass RLS through `admin-proxy` after GitHub token validation. Review the Edge Function before changing admin authorization behavior.
-- Business owner writes should stay constrained to the `update-listing-bp` allowlist.
-- `listing-server-time` exists so open/closed status is not dependent on a visitor's local device clock.
-- Supabase standard storage buckets are not used for listing media in the audited configuration; media upload flows use Cloudflare Images.
-- `cloudflare/tgd-images-upload.js` is Worker source and is not part of the GitHub Pages static site runtime unless deployed to Cloudflare.
-- Reserved routes in `_redirects` are not evidence of implemented event/news/blog/resource systems.
+The source code establishes Cloudflare Pages/Workers integration points, but the Cloudflare account's Pages project, connected GitHub branch, custom domains, build settings, environment variables, deployment history, and Worker route bindings could not be inspected. No deployment instructions are asserted here beyond the verified source/build behavior. Confirm the Cloudflare configuration in its dashboard before changing deployment settings.
 
-## Additional documentation
+## GitHub Actions
 
-- `SUPABASE.md` — authoritative Supabase audit and implementation reference.
-- `supabase/edge-functions/README.md` — notes about Edge Function source mirrors.
-- `TAILWIND_PRODUCTION_SETUP.md` — Tailwind production setup notes.
-- `CATEGORY_IMAGES.md` — category imagery notes.
-- `aboutus.md` — source content for About page copy/history.
+The repository contains one workflow:
+
+**`.github/workflows/refresh-analytics-summary.yml` — Refresh Listing Analytics Summary**
+
+- Scheduled for `0 0 * * *` (midnight UTC daily).
+- Also supports `workflow_dispatch`.
+- Sends an HTTP POST to the Supabase REST RPC `refresh_listing_analytics_summary`.
+- Reads the GitHub Actions secrets `SUPABASE_URL` and `SUPABASE_SERVICE_ROLE_KEY`.
+- Exits non-zero unless the response status is `200` or `204`.
+
+No GitHub Actions workflow for building/deploying the website was found. Workflow run history and secret values were not accessible through the connected GitHub interface, so the workflow's recent success/failure status and the existence/configuration of its secrets could not be independently confirmed.
+
+## Testing and validation
+
+The inspected repository contains no discoverable automated test suite or root npm test/lint scripts. The Supabase project has live schema and advisor tooling, but no repository-managed `supabase/tests/` directory or checked-in pgTAP test suite was found.
+
+Available validation paths evidenced by the source are:
+
+- `npm run tailwind:build` for the CSS build;
+- manual browser verification of static pages and Supabase client flows;
+- Cloudflare Pages runtime verification for server-side routes;
+- Supabase Edge Function invocation/log inspection;
+- the scheduled analytics RPC workflow; and
+- Supabase Security and Performance Advisors.
+
+Do not treat the presence of a workflow or deployed function as proof that it is currently healthy. Review the provider's actual run logs and function logs when validating a deployment.
+
+## Security and operational notes
+
+The audit identified material issues that should be reviewed before treating all privileged paths as secure:
+
+1. **Admin proxy authorization:** deployed `admin-proxy` has `verify_jwt = false`; its custom GitHub-token check only tests whether `GET /repos/thegreekdirectory/platform` succeeds. It does not check the authenticated GitHub user's identity or repository write/admin permissions before using the Supabase service-role key.
+2. **GitHub token in browser storage:** `js/admin.js` stores the supplied GitHub token in `localStorage` (`tgd_admin_token`). A same-origin script injection could read it.
+3. **GitHub file update endpoint:** deployed `update-github-file` has JWT verification enabled, but its source accepts `owner`, `repo`, `path`, `content`, and `message` from the request and uses a server-side `GITHUB_TOKEN`; no application admin/role authorization check was found in that function's source.
+4. **Business-owner data read policy:** the `business_owners` SELECT policy includes an anonymous-access path for unclaimed owner records with a non-null `confirmation_key`. Because table SELECT privileges are granted to `anon`, verify that this does not expose claim keys, owner emails, or owner contact data beyond the intended claim flow.
+5. **Public tracking data:** `listing_analytics` and `shortlink_events` have public SELECT policies. The latter includes IP address, user agent, approximate location, and event time fields; the former includes user-agent and interaction data.
+6. **Owner hours update mismatch:** `js/business-dashboard.js` submits `hours_updated_at` and `hours_updated_by` when hours change, but those columns are absent from the live `public.listings` table. Those updates can fail when included in a PATCH.
+7. **Static branch gate:** `functions/_middleware.js` contains a hard-coded gate value used with a query parameter/cookie and sets a one-year cookie. This is not a suitable substitute for a managed authentication/access-control mechanism.
+8. **Noindex and branch domain:** `_headers` applies noindex/nofollow globally, and `CNAME` points to a branch subdomain. Verify that these are intentional for the environment.
+
+The database-specific risks, stale RPCs, exposed `SECURITY DEFINER` functions, unindexed foreign keys, and other advisor findings are documented in [SUPABASE.md](./SUPABASE.md#security-and-advisor-findings).
+
+## Troubleshooting
+
+| Symptom | Likely investigation |
+|---|---|
+| CSS changes do not appear | Run `npm run tailwind:build`; confirm the generated stylesheet is the one linked by the page. |
+| Static page works but a dynamic route returns a 404 | A basic static server does not execute `functions/`; verify the Cloudflare Pages route/runtime. |
+| Event submission fails | Check the Pages Function secret `SUPABASE_SERVICE_ROLE_KEY`, `event_requests` schema/policies, and Pages Function logs. |
+| Business-owner read/update returns an RLS error | Check the Auth session, matching `business_owners` row, the user's email/owner mapping, and `tgd_listings_update` policy. |
+| Owner hours update fails | Check the submitted payload against live `public.listings` columns; `hours_updated_at` and `hours_updated_by` are not currently present. |
+| Listing/event hours status differs by device | Verify the deployed `listing-server-time` Edge Function and the browser's call to it. |
+| Admin requests return 401/403 | Verify the supplied GitHub token path, deployed Edge Function code, and repository permission model. Do not weaken auth to work around a failure. |
+| Image upload fails | Verify the Cloudflare Worker route and `CLOUDFLARE_ACCOUNT_ID` / `CLOUDFLARE_IMAGES_API_TOKEN` secrets. |
+| Analytics summary is stale | Inspect the GitHub Actions run and the Supabase RPC logs for `refresh_listing_analytics_summary`. |
+
+## Maintenance
+
+- Treat the live Supabase schema and deployed Edge Functions as separate deployable resources; their code is not guaranteed to match the repository mirror.
+- Before database changes, export the current schema and reconcile the 59 live migration-history entries with a proper repository migration history.
+- Do not apply the `supabase/sql/listings_rows.sql` file as a schema migration; it is a large data artifact.
+- Review generated listing pages and sitemap outputs after changing templates or generators.
+- Rebuild Tailwind output after class/source changes.
+- Recheck Cloudflare environment secrets and routes after modifying Pages Functions or the Images Worker.
+- Keep service-role keys and GitHub tokens in provider secret stores only.
+- Re-run Supabase Security and Performance Advisors after schema/security changes.
+
+## License and attribution
+
+No `LICENSE` file or GitHub license metadata was present in the inspected repository. Source files contain proprietary/copyright notices, but no formal repository license was verified. Do not assume that the code is open source or that third parties have redistribution rights.

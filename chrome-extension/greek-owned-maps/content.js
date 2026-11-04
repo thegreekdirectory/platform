@@ -450,8 +450,7 @@
         return /\bsuggest an edit\b/i.test(label) && el.getClientRects().length>0;
       })
       .sort((a,b)=>(a.textContent||"").length-(b.textContent||"").length);
-    const googleButton=candidates[0];
-    if(!googleButton) return;
+    const googleButton=candidates[0] || null;
 
     const wrap=document.createElement("div");
     wrap.className="tgd-bottom-suggest-wrap";
@@ -501,18 +500,31 @@
     });
 
     wrap.appendChild(button);
-    let row=googleButton.parentElement;
-    for(let i=0;i<4 && row && row!==pane;i++) {
-      const style=getComputedStyle(row);
-      if(style.display.includes("flex") && !style.flexDirection.startsWith("column")) break;
-      row=row.parentElement;
-    }
-    if(row && row!==pane && getComputedStyle(row).display.includes("flex")) {
-      row.style.setProperty("flex-wrap","wrap","important");
-      row.style.setProperty("justify-content","center","important");
-      row.insertAdjacentElement("beforeend",wrap);
+    if (googleButton) {
+      let row=googleButton.parentElement;
+      for(let i=0;i<4 && row && row!==pane;i++) {
+        const style=getComputedStyle(row);
+        if(style.display.includes("flex") && !style.flexDirection.startsWith("column")) break;
+        row=row.parentElement;
+      }
+      if(row && row!==pane && getComputedStyle(row).display.includes("flex")) {
+        row.style.setProperty("flex-wrap","wrap","important");
+        row.style.setProperty("justify-content","center","important");
+        wrap.classList.add("tgd-bottom-suggest-under-google");
+        row.insertAdjacentElement("beforeend",wrap);
+      } else {
+        googleButton.insertAdjacentElement("afterend",wrap);
+      }
     } else {
-      googleButton.insertAdjacentElement("afterend",wrap);
+      // Keep the lower suggestion available on profiles where Maps renders a
+      // different or delayed label for its own Suggest an edit action.
+      const addressControl=pane.querySelector('button[data-item-id="address"]')
+        || pane.querySelector('[data-item-id="address"]')
+        || pane.querySelector('button[data-item-id="oloc"]')
+        || pane.querySelector('[data-item-id="oloc"]');
+      const anchor=addressControl?.closest(".RcCsl") || addressControl?.parentElement;
+      if (anchor?.parentElement) anchor.insertAdjacentElement("afterend",wrap);
+      else return;
     }
   }
 

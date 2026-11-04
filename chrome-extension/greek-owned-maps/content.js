@@ -207,8 +207,12 @@
       const onMessage=event=>{
         if(event.source!==window||event.origin!==location.origin||event.data?.channel!=="TGD_MAPS_NATIVE_COPY"||event.data?.token!==token||event.data?.type!=="ARMED")return;
         window.removeEventListener("message",onMessage);
-        const nativeCopy=pane.querySelector('[aria-label*="Copy website" i],[aria-label*="Copy URL" i],[data-item-id*="copy"]');
-        if(nativeCopy && !nativeCopy.closest(".tgd-owned-detail-row")) nativeCopy.click();
+        // Trigger the real Maps website-row copy action. The MAIN-world bridge
+        // substitutes the TGD URL while Maps' own handler displays its snackbar.
+        const website=pane.querySelector('[data-item-id="authority"],[data-item-id="website"]');
+        const websiteRow=website?.closest('[role="listitem"]')||website?.parentElement?.parentElement||website?.parentElement;
+        const nativeCopy=websiteRow?.querySelector('button[aria-label*="Copy" i],[role="button"][aria-label*="Copy" i]');
+        if(nativeCopy) nativeCopy.click();
       };
       window.addEventListener("message",onMessage);
     };

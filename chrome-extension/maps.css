@@ -52,30 +52,57 @@
 .tgd-btn:disabled{opacity:.55!important;cursor:not-allowed!important}
 @media(max-width:520px){#tgd-form{padding:10px!important}#tgd-form-panel{max-height:94vh!important;border-radius:13px!important}.tgd-modal-header{padding:18px 48px 17px 17px!important}.tgd-modal-body{padding:17px!important}.tgd-modal-title{font-size:17px!important}.tgd-modal-actions{flex-direction:column-reverse!important}.tgd-btn{width:100%!important;min-height:42px!important}}
 
-/* Detail-page insertions: blend with Google's business information rows. */
-
-/* Profile header actions: restore the original top-of-profile locations. */
-.tgd-top-badge{display:inline-flex!important;margin:8px 6px 4px 0!important;vertical-align:middle!important}
-.tgd-top-suggest{display:inline-flex!important;margin:8px 6px 4px 0!important;vertical-align:middle!important}
-/* The Plus Code indicator is a separate, full-width sibling row. */
-
-/* Lower Greek-owned row: cloned Google Maps row styling is preserved.
-   These rules only ensure the clone occupies its own line under Plus Code. */
-  display:flex!important;
+/* Detail-page layout only. The injected row and action controls retain
+   Google's own native website-row classes and interaction styles. */
+.tgd-owned-detail-row{
   flex:0 0 100%!important;
   width:100%!important;
   max-width:100%!important;
   min-width:100%!important;
   grid-column:1 / -1!important;
   clear:both!important;
-  align-self:stretch!important;
   box-sizing:border-box!important;
-  margin:0!important;
-  pointer-events:none!important;
 }
-.tgd-owned-detail-row svg{fill:currentColor!important}
-/* Only the adjacent copy receives a small spacing adjustment; all native button
-   classes and visual styling are inherited from Google's Suggest an edit button. */
+.tgd-native-row-subtitle{
+  display:block!important;
+  margin-top:1px!important;
+}
+.tgd-native-flag-icon .tgd-greek-flag{
+  display:block!important;
+  width:24px!important;
+  height:16px!important;
+}
+
+/* Center the cloned native TGD suggestion button on its own line. */
+.tgd-bottom-suggest-wrap{
+  display:flex!important;
+  flex:0 0 100%!important;
+  width:100%!important;
+  max-width:100%!important;
+  justify-content:center!important;
+  align-items:center!important;
+  box-sizing:border-box!important;
+  padding:8px 0 0!important;
+  text-align:center!important;
+}
+.tgd-bottom-suggest{
+  vertical-align:middle!important;
+  text-decoration:none!important;
+  outline-offset:2px!important;
+}
+.tgd-bottom-suggest::before,
+.tgd-bottom-suggest::after{
+  content:none!important;
+  display:none!important;
+}
+.tgd-bottom-suggest .tgd-greek-flag{
+  display:block!important;
+  width:18px!important;
+  height:12px!important;
+  flex:none!important;
+  border-radius:2px!important;
+  box-shadow:0 0 0 .5px rgba(0,0,0,.2)!important;
+}
 
 /* TGD top badge: Google Sans sizing from the reference extension, TGD palette. */
 .tgd-top-badge{

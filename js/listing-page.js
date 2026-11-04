@@ -377,6 +377,9 @@ function openGallery(index = 0) {
             const target = document.getElementById('shareModalButtons');
             if (!modal || !source || !target) return;
             target.innerHTML = source.querySelector('.flex') ? source.querySelector('.flex').innerHTML : '';
+            // Always reopen on the Share pane (no swipe animation), even if the
+            // modal was last closed while the Print pane was showing.
+            setShareModalView('share', { instant: true });
             modal.classList.remove('hidden');
             modal.classList.add('flex');
             requestAnimationFrame(() => modal.classList.add('active'));
@@ -388,6 +391,75 @@ function openGallery(index = 0) {
             modal.classList.remove('active');
             modal.classList.add('hidden');
             modal.classList.remove('flex');
+        }
+
+        // ---- Share <-> Print panes --------------------------------------
+        // Both panes sit in one stage (#shareModalStage); data-view on the
+        // stage decides which one is showing, and the CSS in
+        // listing-template.html animates the swipe between them. The pane
+        // that is off-screen is also made inert/aria-hidden so keyboard and
+        // screen-reader users can't reach it.
+        function setShareModalView(view, options) {
+            const stage = document.getElementById('shareModalStage');
+            const sharePane = document.getElementById('sharePane');
+            const printPane = document.getElementById('printPane');
+            if (!stage || !sharePane || !printPane) return;
+            const instant = !!(options && options.instant);
+            const showPrint = view === 'print';
+
+            if (instant) stage.classList.add('is-resetting');
+            stage.dataset.view = showPrint ? 'print' : 'share';
+            if (instant) {
+                // Force the browser to apply the un-animated state before
+                // transitions are switched back on.
+                void stage.offsetWidth;
+                stage.classList.remove('is-resetting');
+            }
+
+            sharePane.toggleAttribute('inert', showPrint);
+            sharePane.setAttribute('aria-hidden', showPrint ? 'true' : 'false');
+            printPane.toggleAttribute('inert', !showPrint);
+            printPane.setAttribute('aria-hidden', showPrint ? 'false' : 'true');
+
+            if (showPrint) updatePrintPdfLink();
+            if (!instant) {
+                const focusTarget = document.getElementById(showPrint ? 'printBackBtn' : 'sharePrintBtn');
+                if (focusTarget) focusTarget.focus({ preventScroll: true });
+            }
+        }
+
+        function showPrintPane() {
+            setShareModalView('print');
+        }
+
+        function showSharePane() {
+            setShareModalView('share');
+        }
+
+        // Builds the print route URL from the Print pane's choices. The server
+        // (functions/print/listing/[[slug]].js) treats any param that is
+        // missing or not exactly "1" as its default, so only non-default
+        // choices are added:
+        //   Images:  No Images -> noimages=1, All Images -> allimages=1,
+        //            Banner Image Only (default) -> no param
+        //   Footer:  Listing URL "No" -> nofooterurl=1, "Yes" (default) -> no param
+        function buildPrintUrl() {
+            const listing = window.currentListingData || {};
+            const slug = String(listing.slug || '');
+            const path = '/print/listing/' + slug.split('/').map(encodeURIComponent).join('/');
+            const images = document.querySelector('input[name="printImages"]:checked');
+            const footerUrl = document.querySelector('input[name="printFooterUrl"]:checked');
+            const params = new URLSearchParams();
+            if (images && images.value === 'none') params.set('noimages', '1');
+            else if (images && images.value === 'all') params.set('allimages', '1');
+            if (footerUrl && footerUrl.value === 'no') params.set('nofooterurl', '1');
+            const query = params.toString();
+            return query ? path + '?' + query : path;
+        }
+
+        function updatePrintPdfLink() {
+            const link = document.getElementById('printOpenPdfBtn');
+            if (link) link.setAttribute('href', buildPrintUrl());
         }
 
         function copyShareLink() {

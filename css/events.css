@@ -635,12 +635,57 @@ or distribution of this code can result in legal action to the fullest extent pe
     display: block;
 }
 
-/* Custom map markers for events — mirrors .custom-marker.tier-* from
-   listings.css, distinguished with a small calendar glyph background
-   so an events map is visually distinct from a listings map if a
-   visitor has both open in different tabs. */
+/* Event map pins and clusters are CIRCLES; that is the one visual
+   difference from the Listings map, whose pins and clusters are rounded
+   squares — it is what keeps the two maps distinguishable at a glance.
+   Everything else comes straight from the shared rules in
+   css/listings.css: the 40px frame and 3px blue border, the gold border +
+   glow for FEATURED / PREMIUM, the z-index ladder, the 1.1x hover pop, and
+   the cluster sizes / colors / count text. js/events.js adds the
+   "event-marker" / "event-cluster" classes (buildEventPinIcon() /
+   createEventClusterGroup()) purely as the hooks for the two rules below.
+   (The old rule here gave events 8px-radius squares and empty white
+   boxes, and the plain map's clusters had no icon function at all — see
+   js/events.js — so they rendered the library's default green circle
+   inside the square cluster frame.) */
 .custom-marker.event-marker {
-    border-radius: 8px;
+    border-radius: 50%;
+}
+
+/* Cluster: the background is restated at this higher specificity because
+   the markercluster library ships its own .marker-cluster-small / -medium
+   / -large background colors (green / yellow / orange) at the same
+   specificity as css/listings.css's .marker-cluster, so which one wins
+   would otherwise depend on stylesheet load order. */
+.marker-cluster.event-cluster {
+    border-radius: 50%;
+    background: rgba(5, 81, 147, 0.6);
+}
+
+.marker-cluster.event-cluster:hover {
+    background: rgba(5, 81, 147, 0.8);
+}
+
+/* A poster-less event's pin: a calendar glyph where Listings prints
+   "No logo" for a logo-less business. */
+.event-marker-fallback {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 100%;
+    height: 100%;
+}
+
+.event-marker-fallback svg {
+    width: 20px;
+    height: 20px;
+}
+
+/* The split view's pins use a gentler hover pop than the plain map's —
+   css/listings.css's "#splitMap .custom-marker:hover" rule, for this
+   page's #splitEventsMap. */
+#splitEventsMap .custom-marker:hover {
+    transform: scale(1.05);
 }
 
 /* Map popup subtitle/link classes removed — buildEventMapPopupContent()

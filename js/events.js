@@ -47,6 +47,11 @@ or distribution of this code can result in legal action to the fullest extent pe
     let calendarCursor = new Date();  // month currently shown in the calendar panel
     let map = null;
     let markerClusterGroup = null;
+    // Default map view — js/listings.js's defaultMapCenter / defaultMapZoom
+    // (zoom 10; this file used 9 in several places). Shared by both maps and
+    // the Reload buttons.
+    const DEFAULT_EVENTS_MAP_CENTER = [41.8781, -87.6298];
+    const DEFAULT_EVENTS_MAP_ZOOM = 10;
     let loadMoreOffset = 0;
     const PAGE_SIZE = 24;
     // True after a failed events fetch. applyFiltersAndRender() runs right
@@ -351,7 +356,7 @@ or distribution of this code can result in legal action to the fullest extent pe
         // js/listings.js's own locateBtn/resetMapBtn/splitViewBtn.
         document.getElementById('eventLocateBtn')?.addEventListener('click', requestEventsPreciseLocation);
         document.getElementById('eventResetMapBtn')?.addEventListener('click', () => {
-            if (map) map.setView([41.8781, -87.6298], 9);
+            if (map) map.setView(DEFAULT_EVENTS_MAP_CENTER, DEFAULT_EVENTS_MAP_ZOOM);
         });
         document.getElementById('eventSplitViewBtn')?.addEventListener('click', toggleSplitEventsView);
 
@@ -1287,7 +1292,7 @@ or distribution of this code can result in legal action to the fullest extent pe
         if (!mapInstance) return;
         const preferred = getPreferredEventsMapCenter();
         if (preferred) mapInstance.setView([preferred.lat, preferred.lng], zoomLevel || 13);
-        else mapInstance.setView([41.8781, -87.6298], 9);
+        else mapInstance.setView(DEFAULT_EVENTS_MAP_CENTER, DEFAULT_EVENTS_MAP_ZOOM);
     }
 
     function updateEstimatedEventsLocationCircle(mapInstance, existingCircle) {
@@ -1419,24 +1424,200 @@ or distribution of this code can result in legal action to the fullest extent pe
         else userLocationMarker = marker;
     }
 
+    // -------------------------------------------------------------------
+    // Map pins + clusters — a port of js/listings.js's pin machinery, so
+    // that grouping, viewing, clicking and every other pin behavior is the
+    // same on both maps. The ONE intended difference is shape: event pins
+    // and event clusters are circles (css/events.css), Listings' are
+    // rounded squares.
+    //
+    // Ported 1:1 (the Listings function it follows is in parentheses):
+    //   - the cluster group's options and cluster icon (updateMapMarkers()
+    //     / initSplitMap()). One createEventClusterGroup() now serves BOTH
+    //     maps; the plain map used to build a bare markerClusterGroup()
+    //     with no options and no icon function, which is why its clusters
+    //     showed the library's default green circle inside the site's blue
+    //     square;
+    //   - the cluster click handler (attachClusterClickHandler()): a
+    //     cluster of more than 10 zooms in two levels, a smaller one opens
+    //     a popup stacking the events at that spot, highest tier first;
+    //   - tier z-ordering (getTierMarkerStyles()), riseOnHover, the popup
+    //     options and the "×" close button;
+    //   - scroll-wheel zoom only after a click on the map, so the page can
+    //     still scroll past it (the split map already did this; the plain
+    //     map had scrollWheelZoom on and captured the page scroll).
+    //
+    // Deliberately NOT ported:
+    //   - Listings' "useMapRadius" hiding, which drops every pin more than
+    //     50 miles from the VISITOR whenever the map is zoomed in. For
+    //     events it would hide exactly what a visitor is looking for after
+    //     using Location Search on a far-away city, and there is no radius
+    //     control for it to belong to (see the Split View note below).
+    //   - Listings' once-only viewport (centre on the visitor, or fit the
+    //     pins one time, never again). The plain map keeps fitting its
+    //     pins on every render, as it already did: events are far sparser
+    //     than listings, so a map centred on the visitor at street level
+    //     would usually open empty.
+    // -------------------------------------------------------------------
+
+    // Same tiers, class names and z-index offsets as js/listings.js's
+    // getTierMarkerStyles(); the tier look itself (gold border + glow for
+    // PREMIUM/FEATURED) comes from the shared .custom-marker.tier-* rules in
+    // css/listings.css.
+    function getEventTierMarkerStyles(event) {
+        switch ((event.tier || '').toUpperCase()) {
+            case 'PREMIUM':
+                return { className: 'tier-premium', zIndex: 400 };
+            case 'FEATURED':
+                return { className: 'tier-featured', zIndex: 300 };
+            default:
+                return { className: 'tier-free', zIndex: 100 };
+        }
+    }
+
+    // Miles — same formula and earth-radius constant as js/listings.js's
+    // calculateDistance(), which its cluster click handler uses for the
+    // "within 0.1 mile of the cluster centre" test.
+    function calculateEventsDistance(lat1, lon1, lat2, lon2) {
+        const R = 3959;
+        const dLat = (lat2 - lat1) * Math.PI / 180;
+        const dLon = (lon2 - lon1) * Math.PI / 180;
+        const a = Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+            Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+            Math.sin(dLon / 2) * Math.sin(dLon / 2);
+        const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+        return R * c;
+    }
+
+    // Listings' pin is the business logo inside a 40px frame. This is the
+    // event's poster inside the same 40px frame, as a circle (the shape
+    // comes from .custom-marker.event-marker in css/events.css). An event
+    // with no poster gets a calendar glyph where Listings prints the
+    // words "No logo".
+    function buildEventPinIcon(event) {
+        const tierMarker = getEventTierMarkerStyles(event);
+        const inner = event.poster_image
+            ? `<img src="${escapeAttr(event.poster_image)}" alt="${escapeAttr(event.title || '')}">`
+            : '<span class="event-marker-fallback"><svg viewBox="0 0 24 24" fill="none" stroke="#045093" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path stroke-linecap="round" d="M16 2v4M8 2v4M3 10h18"/></svg></span>';
+        return window.L.divIcon({
+            html: `<div class="custom-marker event-marker ${tierMarker.className}">${inner}</div>`,
+            className: '',
+            iconSize: [40, 40],
+            iconAnchor: [20, 20],
+        });
+    }
+
+    // Tile layer shared by both maps: Listings' options (css/listings.css
+    // and js/listings.js have no other tile config), WITH the OpenStreetMap
+    // attribution kept — OSM's tile usage policy requires it to be visible,
+    // and the Listings map omits it.
+    function createEventTileLayer() {
+        return window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; OpenStreetMap contributors',
+            maxZoom: 19,
+            updateWhenIdle: true,
+            updateWhenZooming: false,
+            keepBuffer: 1,
+            reuseTiles: true,
+        });
+    }
+
+    // Identical to the cluster group js/listings.js builds in
+    // updateMapMarkers() and initSplitMap(), plus the "event-cluster" class
+    // on the cluster element, which is what turns the square into a circle.
+    function createEventClusterGroup() {
+        return window.L.markerClusterGroup({
+            maxClusterRadius: 50,
+            disableClusteringAtZoom: 18,
+            spiderfyOnMaxZoom: true,
+            showCoverageOnHover: false,
+            zoomToBoundsOnClick: true,
+            animate: true,
+            animateAddingMarkers: false,
+            chunkedLoading: true,
+            chunkInterval: 300,
+            chunkDelay: 0,
+            iconCreateFunction: (cluster) => {
+                const count = cluster.getChildCount();
+                const size = count >= 50 ? 'large' : count >= 10 ? 'medium' : 'small';
+                return window.L.divIcon({
+                    html: `<div class="marker-cluster marker-cluster-${size} event-cluster">${count}</div>`,
+                    className: '',
+                    iconSize: size === 'small' ? [40, 40] : size === 'medium' ? [50, 50] : [60, 60],
+                });
+            },
+        });
+    }
+
+    // js/listings.js's attachClusterClickHandler(), function for function.
+    // Note it runs IN ADDITION to the library's own zoomToBoundsOnClick /
+    // spiderfy (enabled in the group's options above), exactly as it does
+    // for Listings: a cluster of more than 10 additionally zooms in two
+    // levels; a smaller one opens a popup stacking the events within 0.1
+    // mile of the cluster centre, highest tier first. A cluster whose pins
+    // are all farther apart than that opens no popup — it just zooms.
+    function attachEventClusterClickHandler(targetMap, clusterGroup) {
+        clusterGroup.on('clusterclick', (e) => {
+            const cluster = e.layer;
+            const childMarkers = cluster.getAllChildMarkers();
+
+            if (childMarkers.length > 10) {
+                targetMap.setView(cluster.getLatLng(), targetMap.getZoom() + 2);
+                return;
+            }
+
+            const clusterCenter = cluster.getLatLng();
+            const nearbyMarkers = childMarkers.filter((m) => {
+                const markerPos = m.getLatLng();
+                return calculateEventsDistance(clusterCenter.lat, clusterCenter.lng, markerPos.lat, markerPos.lng) <= 0.1;
+            });
+
+            const clusterEvents = nearbyMarkers
+                .map((m) => filteredEvents.find((ev) => String(ev.id) === String(m.options.eventId)))
+                .filter(Boolean);
+            if (clusterEvents.length === 0) return;
+
+            // Listings indexes this table by the raw tier string, which
+            // sorts unpredictably on an unexpected value; falling back to
+            // the FREE rank keeps the same order for every known tier.
+            const tierPriority = { PREMIUM: 4, FEATURED: 3, FREE: 1 };
+            const rank = (ev) => tierPriority[ev.tier || 'FREE'] || tierPriority.FREE;
+            clusterEvents.sort((a, b) => rank(b) - rank(a));
+
+            const stacked = clusterEvents.length > 1;
+            const clusterPopupContent = clusterEvents
+                .map((ev) => buildEventMapPopupContent(ev, { stacked }))
+                .join('');
+
+            window.L.popup({
+                maxWidth: 320,
+                maxHeight: 400,
+                className: 'custom-popup',
+            })
+                .setLatLng(cluster.getLatLng())
+                .setContent(`<div style="max-height: 400px; overflow-y: auto;">${clusterPopupContent}</div>`)
+                .openOn(targetMap);
+        });
+    }
+
     // Builds one event marker and adds it to the given cluster group —
-    // factored out of renderMap() so updateSplitEventsMapMarkers() below
-    // can build identical markers for the split-view map's own cluster
-    // group without a second copy of this same tier-class/icon/popup
-    // logic. Returns the marker's [lat, lng] pair (for bounds-fitting by
-    // the caller) or null if the event has no usable coordinates.
+    // shared by the plain map (renderMap()) and the split-view map
+    // (updateSplitEventsMapMarkers()). Same marker options as the one
+    // js/listings.js builds in updateMapMarkers(): riseOnHover, tier
+    // zIndexOffset, popup bound with the same options, "×" close button.
+    // Returns the marker's [lat, lng] pair (for bounds-fitting by the
+    // caller) or null if the event has no usable coordinates.
     function addEventMarkerToCluster(event, clusterGroup) {
         const coords = event.coordinates;
         if (!coords || typeof coords.lat !== 'number' || typeof coords.lng !== 'number') return null;
 
-        const tierClass = event.tier === 'PREMIUM' ? 'tier-premium' : event.tier === 'FEATURED' ? 'tier-featured' : 'tier-free';
-        const icon = window.L.divIcon({
-            className: `custom-marker event-marker ${tierClass}`,
-            html: '<div></div>',
-            iconSize: [28, 28],
+        const tierMarker = getEventTierMarkerStyles(event);
+        const marker = window.L.marker([coords.lat, coords.lng], {
+            icon: buildEventPinIcon(event),
+            riseOnHover: true,
+            eventId: event.id,
+            zIndexOffset: tierMarker.zIndex,
         });
-
-        const marker = window.L.marker([coords.lat, coords.lng], { icon, eventId: event.id });
         marker.bindPopup(buildEventMapPopupContent(event), { maxWidth: 320, className: 'custom-popup' });
         marker.on('popupopen', () => {
             const closeBtn = document.querySelector('.leaflet-popup-close-button');
@@ -1467,15 +1648,26 @@ or distribution of this code can result in legal action to the fullest extent pe
 
         if (!map) {
             const preferred = getPreferredEventsMapCenter();
-            map = window.L.map(container, { scrollWheelZoom: true }).setView(
-                preferred ? [preferred.lat, preferred.lng] : [41.8781, -87.6298],
-                preferred ? 13 : 9
-            );
-            window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-                attribution: '&copy; OpenStreetMap contributors',
-            }).addTo(map);
-            markerClusterGroup = window.L.markerClusterGroup();
+            // Same map options as js/listings.js's initMap() and the split
+            // map below — scrollWheelZoom starts OFF and is switched on by
+            // a click and off again when the pointer leaves, so scrolling
+            // the page over the map never zooms it by accident.
+            map = window.L.map(container, {
+                preferCanvas: true,
+                center: preferred ? [preferred.lat, preferred.lng] : DEFAULT_EVENTS_MAP_CENTER,
+                zoom: preferred ? 13 : DEFAULT_EVENTS_MAP_ZOOM,
+                zoomControl: true,
+                scrollWheelZoom: false,
+                touchZoom: true,
+                doubleClickZoom: true,
+            });
+            map.on('click', () => map.scrollWheelZoom.enable());
+            map.on('mouseout', () => map.scrollWheelZoom.disable());
+
+            createEventTileLayer().addTo(map);
+            markerClusterGroup = createEventClusterGroup();
             map.addLayer(markerClusterGroup);
+            attachEventClusterClickHandler(map, markerClusterGroup);
 
             if (userLocation) addEventsUserLocationMarker(map, false);
             else estimatedLocationCircle = updateEstimatedEventsLocationCircle(map, estimatedLocationCircle);
@@ -1505,9 +1697,11 @@ or distribution of this code can result in legal action to the fullest extent pe
     // starred-events section below), as is the split header's own
     // Filters button + sort select. Deliberately still NOT ported: the
     // distance/radius-based map filtering (selectedRadius /
-    // mapVisibleRadiusMiles / calculateDistance — events have no radius
-    // filter, confirmed earlier, so there is nothing for that filtering
-    // to be driven by), and the "closest to me" sort option's automatic
+    // mapVisibleRadiusMiles — events have no radius filter, confirmed
+    // earlier, so there is nothing for that filtering to be driven by;
+    // calculateDistance itself IS ported now, but only for the cluster
+    // click handler's 0.1-mile test — see "Map pins + clusters" above),
+    // and the "closest to me" sort option's automatic
     // requestPreciseLocation('closest-sort') trigger (same reason — no
     // distance-based sort exists for events to wire that into). Every
     // event within the current filtered set is always shown on the
@@ -1596,7 +1790,7 @@ or distribution of this code can result in legal action to the fullest extent pe
             document.getElementById('splitEventViewToggleBtn')?.addEventListener('click', toggleSplitEventsView);
             document.getElementById('splitEventLocateBtn')?.addEventListener('click', requestEventsPreciseLocation);
             document.getElementById('splitEventResetMapBtn')?.addEventListener('click', () => {
-                if (window.splitEventsMap) window.splitEventsMap.setView([41.8781, -87.6298], 9);
+                if (window.splitEventsMap) window.splitEventsMap.setView(DEFAULT_EVENTS_MAP_CENTER, DEFAULT_EVENTS_MAP_ZOOM);
             });
             document.getElementById('eventSplitFiltersBtn')?.addEventListener('click', () => setFiltersVisible(!filtersPanelVisible));
 
@@ -1748,8 +1942,8 @@ or distribution of this code can result in legal action to the fullest extent pe
         const preferred = getPreferredEventsMapCenter();
         window.splitEventsMap = window.L.map('splitEventsMap', {
             preferCanvas: true,
-            center: preferred ? [preferred.lat, preferred.lng] : [41.8781, -87.6298],
-            zoom: preferred ? 13 : 9,
+            center: preferred ? [preferred.lat, preferred.lng] : DEFAULT_EVENTS_MAP_CENTER,
+            zoom: preferred ? 13 : DEFAULT_EVENTS_MAP_ZOOM,
             zoomControl: true,
             scrollWheelZoom: false,
             touchZoom: true,
@@ -1759,36 +1953,11 @@ or distribution of this code can result in legal action to the fullest extent pe
         window.splitEventsMap.on('click', () => window.splitEventsMap.scrollWheelZoom.enable());
         window.splitEventsMap.on('mouseout', () => window.splitEventsMap.scrollWheelZoom.disable());
 
-        window.L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
-            attribution: '&copy; OpenStreetMap contributors',
-            maxZoom: 19,
-            updateWhenIdle: true,
-            updateWhenZooming: false,
-            keepBuffer: 1,
-            reuseTiles: true,
-        }).addTo(window.splitEventsMap);
+        createEventTileLayer().addTo(window.splitEventsMap);
 
-        window.splitEventsMarkerClusterGroup = window.L.markerClusterGroup({
-            maxClusterRadius: 50,
-            disableClusteringAtZoom: 18,
-            spiderfyOnMaxZoom: true,
-            showCoverageOnHover: false,
-            zoomToBoundsOnClick: true,
-            animate: true,
-            animateAddingMarkers: false,
-            chunkedLoading: true,
-            chunkInterval: 300,
-            chunkDelay: 0,
-            iconCreateFunction: (cluster) => {
-                const count = cluster.getChildCount();
-                const size = count >= 50 ? 'large' : count >= 10 ? 'medium' : 'small';
-                return window.L.divIcon({
-                    html: `<div class="marker-cluster marker-cluster-${size}">${count}</div>`,
-                    className: '', iconSize: size === 'small' ? [40, 40] : size === 'medium' ? [50, 50] : [60, 60],
-                });
-            },
-        });
+        window.splitEventsMarkerClusterGroup = createEventClusterGroup();
         window.splitEventsMap.addLayer(window.splitEventsMarkerClusterGroup);
+        attachEventClusterClickHandler(window.splitEventsMap, window.splitEventsMarkerClusterGroup);
 
         if (userLocation) addEventsUserLocationMarker(window.splitEventsMap, true);
         else splitEstimatedLocationCircle = updateEstimatedEventsLocationCircle(window.splitEventsMap, splitEstimatedLocationCircle);
@@ -1799,16 +1968,56 @@ or distribution of this code can result in legal action to the fullest extent pe
     // renderSplitEventsListings() above) — pans/zooms the split map to
     // that event's marker and opens its popup, same interaction as
     // Listings' own window.selectSplitListing.
+    // The marker is found by its event id, exactly as Listings finds its
+    // marker by listingId. This used to match on coordinates within
+    // 0.0001 degrees, which opens the WRONG event's popup (or several) when
+    // events share a venue — and sharing a venue is the normal case here
+    // (a church hall hosting several events).
+    //
+    // One deliberate difference from Listings' selectSplitListing(): when
+    // the zoom changes, the popup is only opened AFTER markercluster has
+    // finished regrouping. Listings calls zoomToShowLayer() straight after
+    // setView(), but markercluster merges clusters with its own ~200ms
+    // animation after any zoom change (animated or not), so at that moment
+    // the pin is still on screen individually: zoomToShowLayer() sees
+    // nothing to do, the popup opens, the regrouping then absorbs the pin
+    // back into its cluster, and the popup closes with it — picking an
+    // event while zoomed far in (or any of several events at one venue)
+    // appears to do nothing. The jump to zoom 15 is also applied without
+    // animation so the zoom the regrouping runs against is the final one.
     window.selectSplitEvent = function selectSplitEvent(eventId, lat, lng) {
         selectedSplitEventId = eventId;
-        if (window.splitEventsMap) {
-            window.splitEventsMap.setView([lat, lng], 15);
-            window.splitEventsMarkerClusterGroup?.eachLayer((marker) => {
-                const markerLatLng = marker.getLatLng();
-                if (Math.abs(markerLatLng.lat - lat) < 0.0001 && Math.abs(markerLatLng.lng - lng) < 0.0001) {
-                    window.splitEventsMarkerClusterGroup.zoomToShowLayer(marker, () => marker.openPopup());
-                }
+        const splitMap = window.splitEventsMap;
+        const group = window.splitEventsMarkerClusterGroup;
+        if (splitMap && group) {
+            let target = null;
+            group.eachLayer((marker) => {
+                if (String(marker.options.eventId) === String(eventId)) target = marker;
             });
+
+            let revealed = false;
+            let fallbackTimer = null;
+            const reveal = () => {
+                if (revealed) return;
+                revealed = true;
+                group.off('animationend', onRegrouped);
+                clearTimeout(fallbackTimer);
+                if (target) group.zoomToShowLayer(target, () => target.openPopup());
+            };
+            const onRegrouped = () => setTimeout(reveal, 0);
+
+            // Listen BEFORE changing the view so a synchronous 'animationend'
+            // (browsers without CSS transitions) can't be missed.
+            group.on('animationend', onRegrouped);
+            const zoomBefore = splitMap.getZoom();
+            splitMap.setView([lat, lng], 15, { animate: false });
+            if (splitMap.getZoom() === zoomBefore) {
+                // Same zoom: nothing is regrouping, so there is nothing to wait for.
+                reveal();
+            } else {
+                // Safety net so a selection can never hang if the event doesn't come.
+                fallbackTimer = setTimeout(reveal, 700);
+            }
         }
         renderSplitEventsListings();
     };
@@ -2112,7 +2321,17 @@ or distribution of this code can result in legal action to the fullest extent pe
     // same unconditional-on-phone-alone behavior), tier/status badges
     // via the already-existing buildEventBadges() instead of
     // hours-based open/closed badges.
-    function buildEventMapPopupContent(event) {
+    // clusterOpts is only passed by the cluster click handler. Listings has
+    // two near-identical popup builders — buildMapPopupContent() for a single
+    // pin and the inline one in attachClusterClickHandler() for a cluster —
+    // that differ in: the wrapper (stacked cards get a divider and spacing),
+    // wrapping rules on the title / subtitle / address so a long name can't
+    // overflow the 280px card, and tap handling on the Directions link. The
+    // same four differences are applied here when clusterOpts is present.
+    function buildEventMapPopupContent(event, clusterOpts) {
+        const inCluster = !!clusterOpts;
+        const stacked = !!(clusterOpts && clusterOpts.stacked);
+        const wrapSafe = inCluster ? 'word-wrap:break-word;hyphens:auto;' : '';
         const badges = buildEventBadges(event);
         const posterImage = event.poster_image || '';
         const fullAddr = getFullEventAddress(event);
@@ -2132,7 +2351,7 @@ or distribution of this code can result in legal action to the fullest extent pe
             </a>` : '';
 
         return `
-            <div class="map-popup" style="width: 280px;">
+            <div class="map-popup" style="width: 280px;${inCluster ? ` margin-bottom: ${stacked ? '16px' : '0'}; border-bottom: ${stacked ? '1px solid #e5e7eb; padding-bottom: 16px' : '0'};` : ''}">
                 ${posterImage ? `
                     <img src="${escapeAttr(posterImage)}"
                          alt="${escapeAttr(event.title || '')}"
@@ -2153,12 +2372,12 @@ or distribution of this code can result in legal action to the fullest extent pe
 
                         <a href="/event/${escapeAttr(event.slug || '')}"
                            class="map-popup-title"
-                           style="font-size:16px;font-weight:700;color:#1f2937;text-decoration:none;display:flex;align-items:center;gap:4px;margin-bottom:6px;line-height:1.3;">
+                           style="font-size:16px;font-weight:700;color:#1f2937;text-decoration:none;display:${inCluster ? 'inline-flex' : 'flex'};align-items:center;gap:4px;margin-bottom:6px;line-height:1.3;${inCluster ? 'flex-wrap:wrap;' : ''}${wrapSafe}">
                             ${escapeHtml(event.title || '')}
                         </a>
 
                         ${dateTimeLabel ? `
-                            <div class="map-popup-tagline" style="font-size:13px;color:#6b7280;margin-bottom:8px;line-height:1.4;">
+                            <div class="map-popup-tagline" style="font-size:13px;color:#6b7280;margin-bottom:8px;line-height:1.4;${wrapSafe}">
                                 ${escapeHtml(dateTimeLabel)}
                             </div>
                         ` : ''}
@@ -2170,7 +2389,7 @@ or distribution of this code can result in legal action to the fullest extent pe
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z"/>
                                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M15 11a3 3 0 11-6 0 3 3 0 016 0z"/>
                                     </svg>
-                                    <span style="line-height:1.4;">${escapeHtml(fullAddr)}</span>
+                                    <span style="line-height:1.4;${wrapSafe}">${escapeHtml(fullAddr)}</span>
                                 </div>
                             ` : ''}
 
@@ -2191,7 +2410,7 @@ or distribution of this code can result in legal action to the fullest extent pe
                                target="_blank"
                                rel="noopener noreferrer"
                                onclick="event.stopPropagation();"
-                               style="position:absolute;bottom:8px;right:8px;display:inline-flex;align-items:center;gap:4px;padding:6px 10px;background:#045093;color:white;border-radius:6px;font-size:12px;font-weight:500;text-decoration:none;box-shadow:0 2px 4px rgba(0,0,0,0.1);transition:background 0.2s;"
+                               style="position:absolute;bottom:8px;right:8px;display:inline-flex;align-items:center;gap:4px;padding:6px 10px;background:#045093;color:white;border-radius:6px;font-size:12px;font-weight:500;text-decoration:none;box-shadow:0 2px 4px rgba(0,0,0,0.1);transition:background 0.2s;${inCluster ? 'touch-action:manipulation;-webkit-tap-highlight-color:transparent;' : ''}"
                                onmouseover="this.style.background='#033d7a'"
                                onmouseout="this.style.background='#045093'">
                                 <svg style="width:14px;height:14px;" fill="none" stroke="currentColor" viewBox="0 0 24 24">

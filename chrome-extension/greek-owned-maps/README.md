@@ -1,6 +1,6 @@
 # The Greek Directory — Google Maps Extension
 
-Chrome Manifest V3 prototype, version 0.1.6.
+Chrome Manifest V3 prototype, version 0.2.0.
 
 ## Install for local testing
 1. Open `chrome://extensions`.

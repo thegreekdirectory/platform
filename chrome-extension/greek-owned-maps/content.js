@@ -244,12 +244,19 @@
         row.style.setProperty("justify-content","center","important");
         row.insertAdjacentElement("beforeend",wrap);
       } else {
-        googleButton.parentElement.insertAdjacentElement("afterend",wrap);
+        const parent=googleButton.parentElement;
+        if(parent) {
+          parent.style.setProperty("text-align","center","important");
+          parent.insertAdjacentElement("afterend",wrap);
+        } else return;
       }
     } else {
       const address=pane.querySelector('button[data-item-id="address"]');
-      if(address?.parentElement) address.parentElement.insertAdjacentElement("afterend",wrap);
-      else return;
+      if(address?.parentElement) {
+        const parent=address.parentElement;
+        parent.style.setProperty("text-align","center","important");
+        parent.insertAdjacentElement("afterend",wrap);
+      } else return;
     }
   }
 

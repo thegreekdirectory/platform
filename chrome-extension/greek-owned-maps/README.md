@@ -1,6 +1,6 @@
 # The Greek Directory — Google Maps Extension
 
-Chrome Manifest V3 prototype, version 0.2.0.
+Chrome Manifest V3 prototype, version 0.2.1.
 
 ## Install for local testing
 1. Open `chrome://extensions`.
@@ -57,6 +57,23 @@ Approving a suggestion marks it approved in the queue; it does not automatically
 - No analytics or advertising code is included.
 
 
-## Google Maps detail-page styling (v0.2.0)
-- The lower Greek-owned information row is cloned from Google's Plus Code row, then its visible text and SVG glyph are changed. Native Google Maps text/icon sizing, classes and colors are retained. The clone is inserted as a separate full-width sibling row under Plus Code.
-- The adjacent suggestion action is cloned from Google's native “Suggest an edit” control, so it inherits the current Maps button design. The original TGD-styled top button and top badge remain unchanged.
+## Google Maps detail-page behavior (v0.2.1)
+
+### Lower Greek-owned row (listed businesses)
+- The row is a deep clone of Google's own Plus Code row, inserted directly beneath it. Google's CSS therefore supplies the layout, hover background and the hover-revealed trailing actions; the extension does not draw its own row chrome. Google's `jsaction`, `id`, `data-*` and `aria-labelledby` attributes are stripped from the clone so Maps' delegated handlers never act on it.
+- Only the icon (Greek flag), text (`Greek-owned` / `Listed in The Greek Directory`), trailing action targets and click behavior are ours. Icon size is taken from Google's original icon.
+- Hovering shows two trailing actions, in the same order as Maps' website row: **Open listing** (opens the TGD listing in a new tab) and **Copy TGD link**. Google's own trailing copy button and icon are reused; the open glyph is added by cloning that button.
+- Clicking the row (or Enter/Space), or **Copy TGD link**, copies `https://thegreekdirectory.org/listing/{slug}` through Google's own copy control, so Maps shows its native "Copied to clipboard" snackbar. The extension never draws a toast of its own.
+
+### How the copy reaches Google's snackbar
+`main-world.js` is registered in `manifest.json` as a `world: "MAIN"` content script. When the row is clicked, `content.js` posts an `ARM` message (token + TGD URL). The bridge temporarily wraps `navigator.clipboard.writeText` and `document.execCommand("copy")`, replies `ARMED`, and `content.js` then clicks Google's real Plus Code copy control. Google's handler runs normally and shows its snackbar; the bridge substitutes the TGD URL for the Plus Code in that one write, reports `COPIED`/`FAILED`, and restores the originals (also after 1.8 s if nothing was copied). The bridge only accepts `https://thegreekdirectory.org/listing/...` URLs.
+
+Fallbacks, so a click never silently does nothing: if the bridge does not answer within 900 ms, or Maps reports a failed write, or no write is reported within about 2.2 s of the click, the link is written directly to the clipboard (without Maps' snackbar) and a console warning is logged where applicable. If the cloned row has no trailing action to reuse, plain Open/Copy buttons are added instead (console warning). If a listing has no slug, the row is shown without actions.
+
+### Suggestion buttons (businesses not in TGD)
+- Top button: unchanged TGD styling; label is now **Suggest to The Greek Directory**.
+- Bottom button: a clone of Google's **Suggest an edit** button (so it uses Maps' own button styling) with the pencil replaced by the Greek flag and the label **Suggest to The Greek Directory**. If Google's button cannot be found, a TGD-styled button is used instead.
+- Neither button is shown for a business already listed as Greek-owned.
+
+### Verification status
+The extension scripts and stylesheet were executed in headless Chromium against a mock Maps panel that imitates the DOM shape the project's earlier code relied on (`RcCsl` rows, `data-item-id`, trailing copy buttons, delegated handlers, black snackbar). That confirms the logic, the clipboard hand-off and the CSS cascade, but it is **not** live Google Maps. Check hover, the snackbar and the bottom buttons in Chrome on real place pages after loading the unpacked extension.

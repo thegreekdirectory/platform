@@ -131,7 +131,7 @@
   }
 
   function removeDetailSuggestButtons() {
-    document.querySelectorAll(".tgd-top-suggest,.tgd-bottom-suggest-wrap,.tgd-edit-suggest").forEach(button=>button.remove());
+    document.querySelectorAll(".tgd-top-suggest,.tgd-bottom-suggest-wrap,.tgd-bottom-suggest-block,.tgd-bottom-suggest-break,.tgd-edit-suggest").forEach(button=>button.remove());
   }
   function removeTopGreekOwnedBadge() {
     document.querySelectorAll(".tgd-top-badge").forEach(badge=>badge.remove());
@@ -181,10 +181,12 @@
 
   // A clone of a Google Maps node must not keep Google's identifiers or jsaction
   // wiring, otherwise Maps' own delegated handlers could act on the copy.
-  function scrubClonedNode(root) {
+  const IDENTITY_DATA_ATTRS=new Set(["data-item-id","data-tooltip","data-value"]);
+  function scrubClonedNode(root, keepData) {
     for(const el of [root,...root.querySelectorAll("*")]) {
       for(const name of el.getAttributeNames()) {
-        if(name==="id" || name==="ping" || name.startsWith("data-") || name.startsWith("js") ||
+        if(name==="id" || name==="ping" || name.startsWith("js") ||
+           (name.startsWith("data-") && (!keepData || IDENTITY_DATA_ATTRS.has(name))) ||
            name==="aria-labelledby" || name==="aria-describedby" || name==="aria-controls" ||
            (el.localName==="a" && (name==="href" || name==="target" || name==="rel"))) {
           el.removeAttribute(name);
@@ -193,11 +195,46 @@
     }
   }
 
+  // Maps draws its black tooltips from data-tooltip through hover/focus jsaction hooks.
+  // Scrubbing removes them, so remember them first and give our controls the hover/focus
+  // hooks only (never a click action), letting Maps itself render the tooltip.
+  const TOOLTIP_EVENTS=new Set(["mouseover","mouseout","mouseenter","mouseleave","focus","blur","focusin","focusout"]);
+  function tooltipJsaction(value) {
+    return String(value||"").split(";").map(part=>part.trim()).filter(part=>{
+      const colon=part.indexOf(":");
+      return colon>0 && TOOLTIP_EVENTS.has(part.slice(0,colon).trim());
+    }).join(";");
+  }
+  function snapshotTooltips(root) {
+    const snapshot=new Map();
+    for(const el of [root,...root.querySelectorAll("*")]) {
+      if(!el.hasAttribute("data-tooltip")) continue;
+      snapshot.set(el,{jsaction:tooltipJsaction(el.getAttribute("jsaction")),hide:el.getAttribute("data-hide-tooltip-on-mouse-move")});
+    }
+    return snapshot;
+  }
+  function applyMapsTooltip(el, info, text) {
+    el.setAttribute("data-tooltip",text);
+    if(info?.jsaction) {
+      el.setAttribute("jsaction",info.jsaction);
+      el.removeAttribute("title");
+    } else {
+      // Maps' tooltip hooks were not found on the original: fall back to a native tooltip.
+      el.setAttribute("title",text);
+    }
+    if(info?.hide!=null) el.setAttribute("data-hide-tooltip-on-mouse-move",info.hide);
+  }
+
   // Swap the glyph inside a cloned Maps control for our own SVG while keeping the
   // size, classes and colour hooks Maps gave the original glyph.
   const ICON_SELECTOR='svg,img,.google-symbols,[class*="google-symbols"],[class*="material-symbols"],[class*="material-icons"]';
+  function findIconElement(container) {
+    // An icon-font glyph is a leaf element; a wrapper that merely has such a class is not the icon.
+    return [...container.querySelectorAll(ICON_SELECTOR)]
+      .find(el=>el.localName==="svg" || el.localName==="img" || !el.firstElementChild);
+  }
   function placeIcon(container, svg, sizeSource) {
-    const icon=container.querySelector(ICON_SELECTOR);
+    const icon=findIconElement(container);
     if(!icon) {
       svg.setAttribute("width","24");
       svg.setAttribute("height","24");
@@ -334,6 +371,21 @@
     return control.parentElement;
   }
 
+  // Drop every other interactive control from the cloned row (e.g. the Plus Code row's info
+  // button), plus any wrapper that is left empty, so only the controls in `keep` remain.
+  function pruneOtherControls(row, keep) {
+    for(const el of [...row.querySelectorAll('button,a,[role="button"],[tabindex]')]) {
+      if(!row.contains(el) || keep.some(k=>k===el || k.contains(el) || el.contains(k))) continue;
+      let parent=el.parentElement;
+      el.remove();
+      while(parent && parent!==row && !parent.firstElementChild && !(parent.textContent||"").trim() && !keep.some(k=>parent.contains(k))) {
+        const up=parent.parentElement;
+        parent.remove();
+        parent=up;
+      }
+    }
+  }
+
   // Only used when the cloned Maps row has no trailing action container to reuse.
   function appendFallbackActions(row) {
     const actions=document.createElement("div");
@@ -350,6 +402,7 @@
     }
     row.classList.add("tgd-fallback-row");
     row.appendChild(actions);
+    return actions;
   }
 
   // The lower Greek-owned row is a deep clone of Google's own Plus Code row, so Maps'
@@ -373,6 +426,7 @@
     if(!bodyControl) return;
     // Find the trailing copy action before scrubbing removes the labels that identify it.
     const copyAction=findTrailingCopyAction(row,bodyControl);
+    const tooltips=snapshotTooltips(row);
     scrubClonedNode(row);
 
     row.classList.add("tgd-owned-detail-row");
@@ -411,24 +465,30 @@
     if(!url) {
       // Without a listing slug there is nothing to open or copy.
       copyAction?.remove();
+      pruneOtherControls(row,[bodyControl]);
     } else {
       if(copyAction) {
         // Keep Google's own trailing copy button (and its icon); add a sibling Open listing
         // button cloned from it, in the same order as Maps' website row: Open, then Copy.
-        const openAction=copyAction.cloneNode(true);
         const sourceCopy=findTrailingCopyAction(plusCodeRow,plusCodeControl);
+        copyAction.dataset.tgdAction="copy";
+        copyAction.setAttribute("aria-label","Copy TGD link");
+        applyMapsTooltip(copyAction,tooltips.get(copyAction),"Copy TGD link");
+        const openAction=copyAction.cloneNode(true);
         placeIcon(openAction,svgFromMarkup(OPEN_LISTING_SVG),sourceCopy?.querySelector(ICON_SELECTOR));
         openAction.dataset.tgdAction="open";
         openAction.setAttribute("aria-label","Open listing");
-        openAction.setAttribute("title","Open listing");
-        copyAction.dataset.tgdAction="copy";
-        copyAction.setAttribute("aria-label","Copy TGD link");
-        copyAction.setAttribute("title","Copy TGD link");
+        applyMapsTooltip(openAction,tooltips.get(copyAction),"Open listing");
         for(const action of [openAction,copyAction]) if(action.localName==="button") action.type="button";
         copyAction.insertAdjacentElement("beforebegin",openAction);
+        pruneOtherControls(row,[bodyControl,openAction,copyAction]);
       } else {
         console.warn("[TGD Maps] Maps' trailing copy action was not found; using fallback row actions.");
-        appendFallbackActions(row);
+        pruneOtherControls(row,[bodyControl,appendFallbackActions(row)]);
+      }
+      // The row itself (and anything else that carried a Maps tooltip) now reads "Copy TGD link".
+      for(const [el,info] of tooltips) {
+        if(row.contains(el) && el!==copyAction && !copyAction?.contains(el)) applyMapsTooltip(el,info,"Copy TGD link");
       }
       if(bodyControl.localName!=="button") {
         // A non-<button> main control has no native Enter/Space activation.
@@ -467,11 +527,30 @@
     container.appendChild(makeDetailSuggestButton(place,"tgd-top-suggest"));
   }
 
-  // Same look as Google's Suggest an edit button: a deep clone of it, with only the
-  // pencil swapped for the Greek flag and the label changed. Its Maps wiring is scrubbed.
-  function buildNativeSuggestButton(googleButton, place) {
-    const button=googleButton.cloneNode(true);
-    scrubClonedNode(button);
+  // Clone the slice of Google's layout that holds `target`: from the child of `container` that
+  // contains it, down to `target`, dropping every other branch. Maps styles its buttons with
+  // parent/child CSS, so the copy must sit inside the same ancestor chain as the original.
+  function cloneContextAround(container, target) {
+    let block=target;
+    while(block.parentElement && block.parentElement!==container) block=block.parentElement;
+    const path=[];
+    for(let el=target;el!==block;el=el.parentElement) path.unshift(Array.prototype.indexOf.call(el.parentElement.children,el));
+    const blockClone=block.cloneNode(true);
+    let targetClone=blockClone;
+    for(const index of path) targetClone=targetClone.children[index];
+    for(let el=targetClone;el!==blockClone;el=el.parentElement) {
+      for(const sibling of [...el.parentElement.children]) if(sibling!==el) sibling.remove();
+    }
+    return {block,blockClone,targetClone};
+  }
+
+  // Same look as Google's Suggest an edit button: a clone of it (inside a clone of its own
+  // ancestor chain), with only the pencil swapped for the Greek flag and the label changed.
+  // Its Maps wiring is scrubbed.
+  function buildNativeSuggestBlock(googleButton, container, place) {
+    const {block,blockClone,targetClone:button}=cloneContextAround(container,googleButton);
+    scrubClonedNode(blockClone,true);
+    blockClone.classList.add("tgd-bottom-suggest-block");
     button.classList.add("tgd-bottom-suggest","tgd-native-clone");
     button.removeAttribute("title");
     button.setAttribute("aria-label","Suggest to The Greek Directory");
@@ -494,7 +573,7 @@
       event.stopPropagation();
       showForm(place);
     });
-    return button;
+    return {block,blockClone};
   }
 
   // TGD-styled fallback, used only when Google's Suggest an edit button cannot be found.
@@ -510,20 +589,16 @@
   // Keep Google's native Suggest an edit control intact. Add the centered TGD
   // action beneath it, using the Greek flag instead of Google's pencil.
   function addSuggestEditAdjacentButton(place) {
-    if(document.querySelector(".tgd-bottom-suggest-wrap")) return;
+    if(document.querySelector(".tgd-bottom-suggest-wrap,.tgd-bottom-suggest-block")) return;
     const pane=document.querySelector('[role="main"]')||document;
     const candidates=[...pane.querySelectorAll('button,[role="button"],a')]
-      .filter(el=>!el.closest("#tgd-form")&&!el.classList.contains("tgd-bottom-suggest"))
+      .filter(el=>!el.closest("#tgd-form")&&!el.closest(".tgd-bottom-suggest-block")&&!el.classList.contains("tgd-bottom-suggest"))
       .filter(el=>{
         const label=(el.getAttribute("aria-label")||el.textContent||"").replace(/\s+/g," ").trim();
         return /^suggest an edit(?:\b|$)/i.test(label) && el.getClientRects().length>0;
       })
       .sort((a,b)=>(a.textContent||"").length-(b.textContent||"").length);
     const googleButton=candidates[0];
-    const wrap=document.createElement("div");
-    wrap.className="tgd-bottom-suggest-wrap";
-    const button=googleButton ? buildNativeSuggestButton(googleButton,place) : buildFallbackSuggestButton(place);
-    wrap.appendChild(button);
 
     if(googleButton) {
       let row=googleButton.parentElement;
@@ -535,21 +610,31 @@
       if(row && row!==pane && getComputedStyle(row).display.includes("flex")) {
         row.style.setProperty("flex-wrap","wrap","important");
         row.style.setProperty("justify-content","center","important");
-        row.insertAdjacentElement("beforeend",wrap);
+        const {blockClone}=buildNativeSuggestBlock(googleButton,row,place);
+        // A full-width, zero-height flex item forces the TGD button onto its own centered line.
+        const lineBreak=document.createElement("div");
+        lineBreak.className="tgd-bottom-suggest-break";
+        lineBreak.setAttribute("aria-hidden","true");
+        row.append(lineBreak,blockClone);
       } else {
         const parent=googleButton.parentElement;
-        if(parent) {
-          parent.style.setProperty("text-align","center","important");
-          parent.insertAdjacentElement("afterend",wrap);
-        } else return;
-      }
-    } else {
-      const address=pane.querySelector('button[data-item-id="address"]');
-      if(address?.parentElement) {
-        const parent=address.parentElement;
+        if(!parent?.parentElement) return;
         parent.style.setProperty("text-align","center","important");
-        parent.insertAdjacentElement("afterend",wrap);
-      } else return;
+        const {block,blockClone}=buildNativeSuggestBlock(googleButton,parent.parentElement,place);
+        block.insertAdjacentElement("afterend",blockClone);
+      }
+      return;
+    }
+
+    // No Google button to copy: TGD-styled fallback under the address row.
+    const wrap=document.createElement("div");
+    wrap.className="tgd-bottom-suggest-wrap";
+    wrap.appendChild(buildFallbackSuggestButton(place));
+    const address=pane.querySelector('button[data-item-id="address"]');
+    if(address?.parentElement) {
+      const parent=address.parentElement;
+      parent.style.setProperty("text-align","center","important");
+      parent.insertAdjacentElement("afterend",wrap);
     }
   }
 

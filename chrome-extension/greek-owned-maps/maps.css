@@ -104,8 +104,12 @@
   display:block!important;flex:0 0 100%!important;width:100%!important;max-width:100%!important;
   box-sizing:border-box!important;padding:8px 0 0!important;text-align:center!important;
 }
-/* Normal case: a clone of Google's own button, so Maps' classes supply the whole look. */
-.tgd-bottom-suggest-wrap .tgd-native-clone{width:fit-content!important;max-width:100%!important;margin-left:auto!important;margin-right:auto!important;cursor:pointer!important}
+/* Normal case: a clone of Google's own button, inside a clone of its own ancestor chain, so
+   Maps' classes (including its parent/child rules) supply the whole look. We only add the line
+   break that puts it on its own centered line, a little space above it, and the pointer cursor. */
+.tgd-bottom-suggest-break{flex:0 0 100%!important;width:100%!important;height:0!important;margin:0!important;padding:0!important;border:0!important}
+.tgd-bottom-suggest-block{margin-top:8px!important}
+.tgd-native-clone{cursor:pointer!important}
 .tgd-native-clone .tgd-greek-flag{display:block!important;flex:none!important;max-width:48px!important;max-height:48px!important}
 /* Fallback only (no Google button to clone): TGD-styled button. */
 .tgd-suggest.tgd-bottom-suggest{display:inline-flex!important;align-items:center!important;justify-content:center!important;gap:8px!important;margin:0 auto!important;vertical-align:middle!important}

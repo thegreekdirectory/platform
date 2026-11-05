@@ -4,6 +4,13 @@
 
   const GREEK_FLAG_SVG = '<svg class="tgd-greek-flag" viewBox="0 0 27 18" aria-hidden="true" focusable="false"><rect width="27" height="18" fill="#0D5EAF"/><path d="M0 3h27M0 7h27M0 11h27M0 15h27" stroke="#fff" stroke-width="2"/><rect width="10" height="10" fill="#0D5EAF"/><path d="M5 0v10M0 5h10" stroke="#fff" stroke-width="2"/></svg>';
 
+  // Material "open in new" / "content copy" glyphs. Only used for the Open listing
+  // action (Google's own copy icon is kept) and the unknown-layout fallback below.
+  const OPEN_LISTING_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="currentColor"><path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg>';
+  const COPY_LINK_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true" focusable="false" fill="currentColor"><path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 16H8V7h11v14z"/></svg>';
+  // Channel shared with main-world.js, which lets Google's own copy handler write the TGD link.
+  const COPY_CHANNEL = "TGD_MAPS_NATIVE_COPY";
+
   function getPlaceIdFromUrl(url) {
     const regex = /0x[0-9a-fA-F]+:0x[0-9a-fA-F]+/g;
     const matches = String(url).match(regex);
@@ -137,11 +144,11 @@
   function addTopGreekOwnedBadge(heading, slug) {
     const container=heading?.parentElement;
     if(!container || !slug || container.querySelector(":scope > .tgd-top-badge")) return;
-    const safeSlug=String(slug).split("/").filter(Boolean).map(part=>encodeURIComponent(part)).join("/");
-    if(!safeSlug) return;
+    const listingUrl=listingUrlFor(slug);
+    if(!listingUrl) return;
     const badge=document.createElement("a");
     badge.className="tgd-badge tgd-top-badge";
-    badge.href="https://thegreekdirectory.org/listing/"+safeSlug;
+    badge.href=listingUrl;
     badge.target="_blank";
     badge.rel="noopener noreferrer";
     badge.setAttribute("aria-label","Greek-owned · TGD — View listing");
@@ -152,45 +159,295 @@
     container.appendChild(badge);
   }
 
-  // Mirror Google's information-row structure. The Greek-owned row is a distinct
-  // sibling below Plus Code, not content inside the Plus Code row.
-  function addGreekOwnedDetailRow() {
+  function listingUrlFor(slug) {
+    const safeSlug=String(slug||"").split("/").filter(Boolean).map(part=>encodeURIComponent(part)).join("/");
+    return safeSlug ? "https://thegreekdirectory.org/listing/"+safeSlug : "";
+  }
+
+  function svgFromMarkup(markup) {
+    const template=document.createElement("template");
+    template.innerHTML=markup.trim();
+    return template.content.firstElementChild;
+  }
+
+  function nativeActionLabel(el) {
+    return [
+      el.getAttribute("aria-label"),
+      el.getAttribute("data-tooltip"),
+      el.getAttribute("data-value"),
+      el.getAttribute("title")
+    ].filter(Boolean).join(" ").replace(/\s+/g," ").trim().toLowerCase();
+  }
+
+  // A clone of a Google Maps node must not keep Google's identifiers or jsaction
+  // wiring, otherwise Maps' own delegated handlers could act on the copy.
+  function scrubClonedNode(root) {
+    for(const el of [root,...root.querySelectorAll("*")]) {
+      for(const name of el.getAttributeNames()) {
+        if(name==="id" || name==="ping" || name.startsWith("data-") || name.startsWith("js") ||
+           name==="aria-labelledby" || name==="aria-describedby" || name==="aria-controls" ||
+           (el.localName==="a" && (name==="href" || name==="target" || name==="rel"))) {
+          el.removeAttribute(name);
+        }
+      }
+    }
+  }
+
+  // Swap the glyph inside a cloned Maps control for our own SVG while keeping the
+  // size, classes and colour hooks Maps gave the original glyph.
+  const ICON_SELECTOR='svg,img,.google-symbols,[class*="google-symbols"],[class*="material-symbols"],[class*="material-icons"]';
+  function placeIcon(container, svg, sizeSource) {
+    const icon=container.querySelector(ICON_SELECTOR);
+    if(!icon) {
+      svg.setAttribute("width","24");
+      svg.setAttribute("height","24");
+      svg.style.setProperty("flex","none");
+      svg.style.setProperty("margin-right","8px");
+      container.insertBefore(svg,container.firstChild);
+      return;
+    }
+    if(icon.localName==="svg" || icon.localName==="img") {
+      const classes=[icon.getAttribute("class"),svg.getAttribute("class")].filter(Boolean).join(" ");
+      if(classes) svg.setAttribute("class",classes);
+      for(const name of ["width","height","style","fill"]) {
+        const value=icon.getAttribute(name);
+        if(value) svg.setAttribute(name,value);
+      }
+      icon.replaceWith(svg);
+      return;
+    }
+    // Icon-font ligature: keep Google's box and size the SVG from its font size. A clone is
+    // detached and has no computed style, so measure the attached original (sizeSource).
+    let size=24;
+    try { size=parseFloat(getComputedStyle(sizeSource||icon).fontSize)||24; } catch {}
+    icon.textContent="";
+    svg.setAttribute("width",String(size));
+    svg.setAttribute("height",String(size));
+    icon.appendChild(svg);
+  }
+
+  function replaceNativeLabel(root, pattern, text) {
+    const target=[...root.querySelectorAll("*")].find(el=>!el.firstElementChild && pattern.test(el.textContent||""));
+    if(target) { target.textContent=text; return true; }
+    const walker=document.createTreeWalker(root,NodeFilter.SHOW_TEXT);
+    for(let node=walker.nextNode();node;node=walker.nextNode()) {
+      if(pattern.test(node.nodeValue||"")) { node.nodeValue=text; return true; }
+    }
+    return false;
+  }
+
+  function openTgdListing(url) {
+    if(!url) return;
+    // Open synchronously inside the user's click so Chrome does not treat it as a popup.
+    window.open(url,"_blank","noopener,noreferrer");
+  }
+
+  // Last-resort copy used only when Maps' own copy path cannot be driven.
+  function writeClipboardDirect(text) {
+    const legacy=()=>{
+      const area=document.createElement("textarea");
+      area.value=text;
+      area.setAttribute("readonly","");
+      area.style.cssText="position:fixed;left:-10000px;top:0;width:1px;height:1px;opacity:0";
+      (document.body||document.documentElement).appendChild(area);
+      area.select();
+      try { return document.execCommand("copy"); }
+      finally { area.remove(); }
+    };
+    try {
+      if(navigator.clipboard?.writeText) return navigator.clipboard.writeText(text).catch(()=>legacy());
+    } catch {}
+    try { return legacy(); }
+    catch(error) { console.warn("[TGD Maps] Clipboard unavailable:",error); }
+  }
+
+  // The trailing "Copy ..." action that sits beside a row's main control.
+  function findTrailingCopyAction(row, control) {
+    return [...row.querySelectorAll('button,[role="button"],a')]
+      .find(el=>el!==control && !control.contains(el) && !el.contains(control) && /copy/.test(nativeActionLabel(el)));
+  }
+
+  // Google's original Plus Code copy control, never our clone (clones have no data-item-id).
+  function findNativeCopyControl() {
+    const pane=document.querySelector('[role="main"]')||document;
+    const control=pane.querySelector('button[data-item-id="oloc"]') || pane.querySelector('[data-item-id="oloc"]');
+    if(!control) return null;
+    const row=findInformationRow(control,pane);
+    return (row && findTrailingCopyAction(row,control)) || control;
+  }
+
+  // Copy the TGD link through Google's own copy handler so Maps shows its native
+  // "Copied to clipboard" snackbar. main-world.js swaps the Plus Code text for the
+  // TGD URL inside that handler's clipboard write. We never draw a toast of our own.
+  // One hand-off at a time. A second click while one is pending would nest two bridge
+  // wrappers: Google's first copy would consume both and its second would write the raw
+  // Plus Code over the TGD link.
+  let copyInFlight=false;
+  function copyTgdLink(url) {
+    if(!url || copyInFlight) return;
+    const nativeCopy=findNativeCopyControl();
+    if(!nativeCopy) { writeClipboardDirect(url); return; }
+
+    copyInFlight=true;
+    const token=crypto.randomUUID();
+    let armTimer, confirmTimer;
+    const cleanup=()=>{
+      copyInFlight=false;
+      window.removeEventListener("message",onMessage);
+      clearTimeout(armTimer);
+      clearTimeout(confirmTimer);
+    };
+    function onMessage(event) {
+      const data=event.data;
+      if(event.source!==window || event.origin!==location.origin ||
+         data?.channel!==COPY_CHANNEL || data?.token!==token) return;
+      if(data.type==="ARMED") {
+        clearTimeout(armTimer);
+        // If Maps never reports a clipboard write, make sure the link is still copied.
+        confirmTimer=setTimeout(()=>{ cleanup(); writeClipboardDirect(url); },2200);
+        nativeCopy.click();
+      } else if(data.type==="COPIED") {
+        cleanup();
+      } else if(data.type==="FAILED") {
+        cleanup();
+        writeClipboardDirect(url);
+      }
+    }
+    window.addEventListener("message",onMessage);
+    // If the MAIN-world bridge is unavailable, copy directly instead of doing nothing.
+    armTimer=setTimeout(()=>{
+      cleanup();
+      console.warn("[TGD Maps] Native copy bridge unavailable; copied without Maps' snackbar.");
+      writeClipboardDirect(url);
+    },900);
+    window.postMessage({channel:COPY_CHANNEL,type:"ARM",token,url},location.origin);
+  }
+
+  // The outer Google information row (holds the main control and its trailing actions).
+  function findInformationRow(control, pane) {
+    const byClass=control.closest(".RcCsl");
+    if(byClass && byClass!==pane && pane.contains(byClass)) return byClass;
+    let el=control.parentElement;
+    for(let level=0;level<4 && el && el!==pane;level++,el=el.parentElement) {
+      if([...el.querySelectorAll("button,[role=\"button\"]")].some(node=>node!==control && /copy/.test(nativeActionLabel(node)))) return el;
+    }
+    return control.parentElement;
+  }
+
+  // Only used when the cloned Maps row has no trailing action container to reuse.
+  function appendFallbackActions(row) {
+    const actions=document.createElement("div");
+    actions.className="tgd-fallback-actions";
+    for(const [kind,label,markup] of [["open","Open listing",OPEN_LISTING_SVG],["copy","Copy TGD link",COPY_LINK_SVG]]) {
+      const button=document.createElement("button");
+      button.type="button";
+      button.className="tgd-fallback-action";
+      button.dataset.tgdAction=kind;
+      button.setAttribute("aria-label",label);
+      button.title=label;
+      button.appendChild(svgFromMarkup(markup));
+      actions.appendChild(button);
+    }
+    row.classList.add("tgd-fallback-row");
+    row.appendChild(actions);
+  }
+
+  // The lower Greek-owned row is a deep clone of Google's own Plus Code row, so Maps'
+  // CSS supplies the layout, hover background and hover-revealed trailing actions.
+  // Only the flag, the text, the trailing action targets and the click behaviour are ours.
+  function addGreekOwnedDetailRow(slug) {
     if(document.querySelector(".tgd-owned-detail-row")) return;
+    const url=listingUrlFor(slug);
     const pane=document.querySelector('[role="main"]')||document;
     const plusCodeControl=pane.querySelector('button[data-item-id="oloc"]')
       || pane.querySelector('[data-item-id="oloc"]')
       || [...pane.querySelectorAll('button,[role="button"]')]
         .find(el=>/plus code/i.test(el.getAttribute("aria-label")||el.textContent||""));
     if(!plusCodeControl?.parentElement) return;
-    const plusCodeRow=plusCodeControl.parentElement;
-    if(plusCodeRow.querySelector(".tgd-owned-detail-row")) return;
+    const plusCodeRow=findInformationRow(plusCodeControl,pane);
+    if(!plusCodeRow?.parentElement) return;
 
-    const row=document.createElement("div");
-    row.className="tgd-owned-detail-row";
-    row.setAttribute("role","listitem");
-    row.setAttribute("aria-label","Greek-owned — Listed in The Greek Directory");
-    const icon=document.createElement("span");
-    icon.className="tgd-detail-row-icon";
-    icon.innerHTML=GREEK_FLAG_SVG;
-    const copy=document.createElement("span");
-    copy.className="tgd-detail-row-copy";
-    const title=document.createElement("span");
-    title.className="tgd-detail-row-title";
-    title.textContent="Greek-owned";
-    const subtitle=document.createElement("span");
+    const row=plusCodeRow.cloneNode(true);
+    const bodyControl=row.matches('[data-item-id="oloc"]') ? row
+      : (row.querySelector('[data-item-id="oloc"]') || row.querySelector('button,[role="button"],a'));
+    if(!bodyControl) return;
+    // Find the trailing copy action before scrubbing removes the labels that identify it.
+    const copyAction=findTrailingCopyAction(row,bodyControl);
+    scrubClonedNode(row);
+
+    row.classList.add("tgd-owned-detail-row");
+    if(url) row.dataset.tgdListingUrl=url;
+    bodyControl.setAttribute("aria-label",url
+      ? "Greek-owned — Listed in The Greek Directory. Copy TGD link"
+      : "Greek-owned — Listed in The Greek Directory");
+    bodyControl.removeAttribute("title");
+    if(bodyControl.localName==="button") bodyControl.type="button";
+    else {
+      bodyControl.setAttribute("role","button");
+      bodyControl.tabIndex=0;
+    }
+
+    placeIcon(bodyControl,svgFromMarkup(GREEK_FLAG_SVG),plusCodeControl.querySelector(ICON_SELECTOR));
+    const textLeaves=[...bodyControl.querySelectorAll("*")]
+      .filter(el=>!el.firstElementChild && (el.textContent||"").trim() && !el.matches(ICON_SELECTOR) && !el.closest(ICON_SELECTOR));
+    const nativeText=bodyControl.querySelector(".Io6YTe,.fontBodyMedium") || textLeaves[textLeaves.length-1];
+    const stack=document.createElement("div");
+    stack.className="tgd-detail-row-copy";
+    const subtitle=document.createElement("div");
     subtitle.className="tgd-detail-row-subtitle";
     subtitle.textContent="Listed in The Greek Directory";
-    copy.append(title,subtitle);
-    row.append(icon,copy);
-    const referenceText=plusCodeControl.querySelector("div div")||plusCodeControl;
-    try { row.style.color=getComputedStyle(referenceText).color; } catch {}
-    const layout=plusCodeRow.parentElement;
-    if(layout) {
-      const style=getComputedStyle(layout);
-      if(style.display==="flex" && !style.flexDirection.startsWith("column")) {
-        layout.style.setProperty("flex-wrap","wrap","important");
-      }
+    if(nativeText) {
+      nativeText.textContent="Greek-owned";
+      nativeText.replaceWith(stack);
+      stack.append(nativeText,subtitle);
+    } else {
+      const title=document.createElement("div");
+      title.className="tgd-detail-row-title";
+      title.textContent="Greek-owned";
+      stack.append(title,subtitle);
+      bodyControl.appendChild(stack);
     }
+
+    if(!url) {
+      // Without a listing slug there is nothing to open or copy.
+      copyAction?.remove();
+    } else {
+      if(copyAction) {
+        // Keep Google's own trailing copy button (and its icon); add a sibling Open listing
+        // button cloned from it, in the same order as Maps' website row: Open, then Copy.
+        const openAction=copyAction.cloneNode(true);
+        const sourceCopy=findTrailingCopyAction(plusCodeRow,plusCodeControl);
+        placeIcon(openAction,svgFromMarkup(OPEN_LISTING_SVG),sourceCopy?.querySelector(ICON_SELECTOR));
+        openAction.dataset.tgdAction="open";
+        openAction.setAttribute("aria-label","Open listing");
+        openAction.setAttribute("title","Open listing");
+        copyAction.dataset.tgdAction="copy";
+        copyAction.setAttribute("aria-label","Copy TGD link");
+        copyAction.setAttribute("title","Copy TGD link");
+        for(const action of [openAction,copyAction]) if(action.localName==="button") action.type="button";
+        copyAction.insertAdjacentElement("beforebegin",openAction);
+      } else {
+        console.warn("[TGD Maps] Maps' trailing copy action was not found; using fallback row actions.");
+        appendFallbackActions(row);
+      }
+      if(bodyControl.localName!=="button") {
+        // A non-<button> main control has no native Enter/Space activation.
+        bodyControl.addEventListener("keydown",event=>{
+          if(event.target===bodyControl && (event.key==="Enter" || event.key===" ")) {
+            event.preventDefault();
+            copyTgdLink(url);
+          }
+        });
+      }
+      row.addEventListener("click",event=>{
+        const trigger=event.target.closest?.("[data-tgd-action]");
+        event.preventDefault();
+        event.stopPropagation();
+        if(trigger?.dataset.tgdAction==="open") openTgdListing(url);
+        else copyTgdLink(url);
+      });
+    }
+
     plusCodeRow.insertAdjacentElement("afterend",row);
   }
 
@@ -198,7 +455,7 @@
     const button=document.createElement("button");
     button.type="button";
     button.className="tgd-suggest "+extraClass;
-    button.textContent="Suggest for the Greek-owned list";
+    button.textContent="Suggest to The Greek Directory";
     button.addEventListener("click",()=>showForm(place));
     return button;
   }
@@ -208,6 +465,46 @@
     const container=heading?.parentElement;
     if(!container || container.querySelector(":scope > .tgd-top-suggest")) return;
     container.appendChild(makeDetailSuggestButton(place,"tgd-top-suggest"));
+  }
+
+  // Same look as Google's Suggest an edit button: a deep clone of it, with only the
+  // pencil swapped for the Greek flag and the label changed. Its Maps wiring is scrubbed.
+  function buildNativeSuggestButton(googleButton, place) {
+    const button=googleButton.cloneNode(true);
+    scrubClonedNode(button);
+    button.classList.add("tgd-bottom-suggest","tgd-native-clone");
+    button.removeAttribute("title");
+    button.setAttribute("aria-label","Suggest to The Greek Directory");
+    if(button.localName==="button") button.type="button";
+    else {
+      button.setAttribute("role","button");
+      button.tabIndex=0;
+      button.addEventListener("keydown",event=>{
+        if(event.key==="Enter" || event.key===" ") { event.preventDefault(); showForm(place); }
+      });
+    }
+    placeIcon(button,svgFromMarkup(GREEK_FLAG_SVG),googleButton.querySelector(ICON_SELECTOR));
+    if(!replaceNativeLabel(button,/suggest an edit/i,"Suggest to The Greek Directory")) {
+      const label=document.createElement("span");
+      label.textContent="Suggest to The Greek Directory";
+      button.appendChild(label);
+    }
+    button.addEventListener("click",event=>{
+      event.preventDefault();
+      event.stopPropagation();
+      showForm(place);
+    });
+    return button;
+  }
+
+  // TGD-styled fallback, used only when Google's Suggest an edit button cannot be found.
+  function buildFallbackSuggestButton(place) {
+    const button=document.createElement("button");
+    button.type="button";
+    button.className="tgd-suggest tgd-bottom-suggest";
+    button.innerHTML=GREEK_FLAG_SVG+'<span>Suggest to The Greek Directory</span>';
+    button.addEventListener("click",()=>showForm(place));
+    return button;
   }
 
   // Keep Google's native Suggest an edit control intact. Add the centered TGD
@@ -225,11 +522,7 @@
     const googleButton=candidates[0];
     const wrap=document.createElement("div");
     wrap.className="tgd-bottom-suggest-wrap";
-    const button=document.createElement("button");
-    button.type="button";
-    button.className="tgd-suggest tgd-bottom-suggest";
-    button.innerHTML=GREEK_FLAG_SVG+'<span>Suggest for the Greek-owned list</span>';
-    button.addEventListener("click",()=>showForm(place));
+    const button=googleButton ? buildNativeSuggestButton(googleButton,place) : buildFallbackSuggestButton(place);
     wrap.appendChild(button);
 
     if(googleButton) {
@@ -299,7 +592,7 @@
           if(listed) {
             removeDetailSuggestButtons();
             addTopGreekOwnedBadge(heading,typeof match==="object"?match.slug:null);
-            addGreekOwnedDetailRow();
+            addGreekOwnedDetailRow(typeof match==="object"?match.slug:null);
           } else {
             removeTopGreekOwnedBadge();
             removeGreekOwnedDetailRow();
@@ -338,7 +631,7 @@
           } else if(!item.card.querySelector(".tgd-suggest")) {
             const button=document.createElement("button");
             button.className="tgd-suggest";
-            button.textContent="Suggest for the Greek-owned list";
+            button.textContent="Suggest to The Greek Directory";
             button.addEventListener("click",()=>showForm(item));
             item.card.appendChild(button);
           }

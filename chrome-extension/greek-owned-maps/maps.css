@@ -1,0 +1,125 @@
+/* The Greek Directory — Google Maps extension
+   Visual system aligned with the main TGD website and submission forms. */
+:root{--tgd-blue:#045093;--tgd-blue-dark:#033d74;--tgd-blue-mid:#0a4b87;--tgd-gold:#D4AF37;--tgd-gold-light:#e6c84e;--tgd-navy:#09152a;--tgd-text:#1a1a1a;--tgd-muted:#4b5563;--tgd-border:#e5e7eb;--tgd-pale:#f8fafc;--tgd-pale-blue:#dbeafe}
+.tgd-status-mark{display:grid!important;place-items:center!important;flex:0 0 40px!important;width:40px!important;height:40px!important;border-radius:9px!important;background:linear-gradient(145deg,var(--tgd-blue),var(--tgd-blue-dark))!important;color:#fff!important;font:800 12px/1 'Montserrat',Arial,sans-serif!important;letter-spacing:-.04em!important}
+.tgd-status-copy{display:grid!important;gap:3px!important;min-width:0!important}
+.tgd-status-brand{color:var(--tgd-blue)!important;font:800 9px/1.2 'Montserrat',Arial,sans-serif!important;letter-spacing:.11em!important;text-transform:uppercase!important}
+.tgd-status-message{color:#374151!important;font:12px/1.45 'Bitter',Georgia,serif!important;overflow-wrap:anywhere!important}
+.tgd-status-close{position:absolute!important;top:7px!important;right:8px!important;display:grid!important;place-items:center!important;width:24px!important;height:24px!important;padding:0!important;border:0!important;border-radius:6px!important;background:transparent!important;color:#64748b!important;font:20px/1 Arial,sans-serif!important;cursor:pointer!important}
+.tgd-status-close:hover{background:#f1f5f9!important;color:var(--tgd-blue)!important}
+.tgd-badge{display:inline-flex!important;align-items:center!important;gap:5px!important;margin:5px 5px 3px 0!important;padding:4px 9px!important;border:1px solid #b9d4ec!important;border-radius:999px!important;background:#eaf3fb!important;color:var(--tgd-blue-dark)!important;font:700 11px/1.35 'Montserrat',Arial,sans-serif!important;white-space:nowrap!important;box-shadow:0 1px 2px rgba(4,80,147,.06)!important}
+.tgd-badge:before{content:"✓"!important;display:inline-grid!important;place-items:center!important;width:15px!important;height:15px!important;border-radius:50%!important;background:var(--tgd-blue)!important;color:#fff!important;font:800 10px/1 Arial,sans-serif!important}
+.tgd-suggest{display:inline-flex!important;align-items:center!important;justify-content:center!important;gap:7px!important;margin:6px 5px 4px 0!important;padding:8px 12px!important;border:1px solid var(--tgd-blue)!important;border-radius:8px!important;background:#fff!important;color:var(--tgd-blue)!important;font:700 11px/1.35 'Montserrat',Arial,sans-serif!important;cursor:pointer!important;transition:background .16s ease,color .16s ease,box-shadow .16s ease,transform .16s ease!important}
+.tgd-suggest:before{content:"+"!important;font-size:15px!important;line-height:.8!important;font-weight:500!important}
+.tgd-suggest:hover{background:var(--tgd-blue)!important;color:#fff!important;box-shadow:0 3px 10px rgba(4,80,147,.2)!important;transform:translateY(-1px)!important}
+.tgd-suggest:focus-visible,.tgd-status-close:focus-visible,#tgd-form button:focus-visible{outline:3px solid rgba(212,175,55,.75)!important;outline-offset:2px!important}
+#tgd-form{position:fixed!important;inset:0!important;z-index:2147483647!important;display:grid!important;place-items:center!important;padding:18px!important;background:rgba(9,21,42,.66)!important;backdrop-filter:blur(3px)!important;-webkit-backdrop-filter:blur(3px)!important;font-family:'Bitter',Georgia,serif!important;box-sizing:border-box!important}
+#tgd-form *{box-sizing:border-box!important}
+#tgd-form-panel{position:relative!important;display:block!important;width:min(480px,100%)!important;max-height:min(88vh,760px)!important;overflow:auto!important;padding:0!important;border:1px solid rgba(255,255,255,.7)!important;border-radius:16px!important;background:#fff!important;color:var(--tgd-text)!important;box-shadow:0 24px 70px rgba(0,0,0,.28)!important;text-align:left!important}
+.tgd-modal-header{position:relative!important;display:flex!important;align-items:flex-start!important;gap:13px!important;padding:22px 54px 20px 22px!important;background:linear-gradient(135deg,var(--tgd-navy) 0%,var(--tgd-blue-dark) 56%,var(--tgd-blue) 100%)!important;border-bottom:3px solid var(--tgd-gold)!important}
+.tgd-modal-mark{display:grid!important;place-items:center!important;flex:0 0 44px!important;width:44px!important;height:44px!important;border:1px solid rgba(255,255,255,.32)!important;border-radius:10px!important;background:rgba(255,255,255,.12)!important;color:#fff!important;font:800 13px/1 'Montserrat',Arial,sans-serif!important}
+.tgd-modal-branding{min-width:0!important}
+.tgd-modal-eyebrow{display:block!important;margin:1px 0 5px!important;color:var(--tgd-gold-light)!important;font:700 9px/1.3 'Montserrat',Arial,sans-serif!important;letter-spacing:.15em!important;text-transform:uppercase!important}
+.tgd-modal-title{margin:0!important;color:#fff!important;font:700 19px/1.25 'Montserrat',Arial,sans-serif!important;letter-spacing:-.02em!important}
+.tgd-modal-close{position:absolute!important;top:14px!important;right:14px!important;display:grid!important;place-items:center!important;width:30px!important;height:30px!important;border:1px solid rgba(255,255,255,.3)!important;border-radius:8px!important;background:rgba(255,255,255,.1)!important;color:#fff!important;font:20px/1 Arial,sans-serif!important;cursor:pointer!important}
+.tgd-modal-close:hover{background:rgba(255,255,255,.22)!important}
+.tgd-modal-body{padding:21px 22px 22px!important}
+.tgd-modal-intro{margin:0 0 15px!important;color:var(--tgd-muted)!important;font:13px/1.6 'Bitter',Georgia,serif!important}
+.tgd-business-card{display:flex!important;align-items:flex-start!important;gap:10px!important;margin:0 0 20px!important;padding:12px 13px!important;border:1px solid #dbeafe!important;border-left:3px solid var(--tgd-gold)!important;border-radius:9px!important;background:#f8fafc!important}
+.tgd-business-icon{display:grid!important;place-items:center!important;flex:0 0 30px!important;width:30px!important;height:30px!important;border-radius:8px!important;background:#eaf3fb!important;color:var(--tgd-blue)!important;font:700 15px/1 Arial,sans-serif!important}
+.tgd-business-details{min-width:0!important;display:grid!important;gap:3px!important}
+.tgd-business-label{color:#64748b!important;font:700 9px/1.3 'Montserrat',Arial,sans-serif!important;letter-spacing:.1em!important;text-transform:uppercase!important}
+.tgd-business-name{color:#1f2937!important;font:700 13px/1.45 'Montserrat',Arial,sans-serif!important;overflow-wrap:anywhere!important}
+.tgd-choice-fieldset{display:grid!important;gap:8px!important;min-width:0!important;margin:0 0 17px!important;padding:0!important;border:0!important}
+.tgd-choice-legend{margin:0 0 4px!important;padding:0!important;color:#1f2937!important;font:700 12px/1.45 'Montserrat',Arial,sans-serif!important}
+.tgd-choice{display:flex!important;align-items:center!important;gap:10px!important;margin:0!important;padding:10px 12px!important;border:1px solid #dbeafe!important;border-radius:9px!important;background:#f8fafc!important;color:#334155!important;font:600 12px/1.4 'Montserrat',Arial,sans-serif!important;cursor:pointer!important;transition:background .15s ease,border-color .15s ease,color .15s ease!important}
+.tgd-choice:hover{border-color:#9cc3e6!important;background:#f1f7fd!important}
+.tgd-choice:has(input:checked){border-color:var(--tgd-blue)!important;background:var(--tgd-pale-blue)!important;color:#0b3e6f!important}
+.tgd-choice input{flex:0 0 auto!important;width:16px!important;height:16px!important;margin:0!important;accent-color:var(--tgd-blue)!important}
+.tgd-note-label{display:block!important;margin:0 0 7px!important;color:#1f2937!important;font:700 12px/1.4 'Montserrat',Arial,sans-serif!important}
+.tgd-note{display:block!important;width:100%!important;min-height:86px!important;resize:vertical!important;padding:10px 12px!important;border:1px solid #cbd5e1!important;border-radius:8px!important;background:#fff!important;color:#1f2937!important;font:12px/1.5 'Bitter',Georgia,serif!important;box-shadow:none!important}
+.tgd-note::placeholder{color:#94a3b8!important}
+.tgd-note:focus{outline:none!important;border-color:var(--tgd-blue)!important;box-shadow:0 0 0 3px rgba(4,80,147,.1)!important}
+.tgd-form-status{min-height:18px!important;margin:10px 0 0!important;color:#64748b!important;font:11px/1.45 'Montserrat',Arial,sans-serif!important}
+.tgd-form-status.is-success{color:#047857!important}
+.tgd-form-status.is-error{color:#b91c1c!important}
+.tgd-modal-actions{display:flex!important;justify-content:flex-end!important;gap:9px!important;margin-top:15px!important;padding-top:15px!important;border-top:1px solid #eef2f7!important}
+.tgd-btn{min-height:38px!important;padding:9px 14px!important;border:1px solid transparent!important;border-radius:8px!important;font:700 11px/1.2 'Montserrat',Arial,sans-serif!important;cursor:pointer!important;transition:background .15s ease,border-color .15s ease,transform .15s ease!important}
+.tgd-btn-secondary{background:#fff!important;color:#475569!important;border-color:#cbd5e1!important}
+.tgd-btn-secondary:hover{background:#f8fafc!important;border-color:#94a3b8!important}
+.tgd-btn-primary{background:var(--tgd-blue)!important;color:#fff!important;border-color:var(--tgd-blue)!important}
+.tgd-btn-primary:hover:not(:disabled){background:var(--tgd-blue-dark)!important;border-color:var(--tgd-blue-dark)!important;transform:translateY(-1px)!important}
+.tgd-btn:disabled{opacity:.55!important;cursor:not-allowed!important}
+@media(max-width:520px){#tgd-form{padding:10px!important}#tgd-form-panel{max-height:94vh!important;border-radius:13px!important}.tgd-modal-header{padding:18px 48px 17px 17px!important}.tgd-modal-body{padding:17px!important}.tgd-modal-title{font-size:17px!important}.tgd-modal-actions{flex-direction:column-reverse!important}.tgd-btn{width:100%!important;min-height:42px!important}}
+
+/* Detail-page insertions: blend with Google's business information rows. */
+
+/* Profile header actions: restore the original top-of-profile locations. */
+.tgd-top-badge{display:inline-flex!important;margin:8px 6px 4px 0!important;vertical-align:middle!important}
+.tgd-top-suggest{display:inline-flex!important;margin:8px 6px 4px 0!important;vertical-align:middle!important}
+/* TGD top badge: Google Sans sizing from the reference extension, TGD palette. */
+.tgd-top-badge{
+  display:inline-flex!important;align-items:center!important;gap:6px!important;
+  margin:6px 0 2px!important;padding:3px 10px 3px 8px!important;
+  border:0!important;border-radius:999px!important;background:rgba(4,80,147,.12)!important;
+  color:#045093!important;font:500 13px/18px "Google Sans",Roboto,Arial,sans-serif!important;
+  text-decoration:none!important;white-space:nowrap!important;vertical-align:middle!important;
+  cursor:pointer!important;box-shadow:none!important;
+  transition:background .2s ease,box-shadow .2s ease!important;
+}
+.tgd-top-badge:before{content:none!important;display:none!important}
+.tgd-top-badge .tgd-greek-flag{display:block!important;width:18px!important;height:12px!important;flex:none!important;border-radius:2px!important;box-shadow:0 0 0 .5px rgba(0,0,0,.2)!important}
+.tgd-top-badge-label{display:inline-block!important}
+.tgd-badge-view{
+  display:inline-flex!important;align-items:center!important;gap:3px!important;
+  max-width:0!important;margin-left:0!important;opacity:0!important;overflow:hidden!important;
+  transform:translateX(-5px)!important;
+  transition:max-width .24s ease,margin-left .24s ease,opacity .18s ease,transform .24s ease!important;
+  font:500 12px/18px "Google Sans",Roboto,Arial,sans-serif!important;
+}
+.tgd-badge-view svg{width:13px!important;height:13px!important;flex:none!important;transition:transform .24s ease!important}
+.tgd-top-badge:hover,.tgd-top-badge:focus-visible{background:rgba(4,80,147,.18)!important;box-shadow:0 2px 8px rgba(4,80,147,.14)!important}
+.tgd-top-badge:hover .tgd-badge-view,.tgd-top-badge:focus-visible .tgd-badge-view{max-width:58px!important;margin-left:3px!important;opacity:1!important;transform:translateX(0)!important}
+.tgd-top-badge:hover .tgd-badge-view svg,.tgd-top-badge:focus-visible .tgd-badge-view svg{transform:translateX(2px)!important}
+
+/* Lower Greek-owned row: a deep clone of Google's own Plus Code row, so Maps' CSS supplies
+   the layout, hover background and hover-revealed trailing actions. Only our parts are styled. */
+.tgd-owned-detail-row .tgd-greek-flag{display:block!important;flex:none!important;max-width:48px!important;max-height:48px!important}
+.tgd-detail-row-copy{display:block!important;flex:1 1 auto!important;min-width:0!important}
+.tgd-detail-row-title{display:block!important;color:inherit!important;font:400 14px/20px "Google Sans Text",Roboto,Arial,sans-serif!important}
+.tgd-detail-row-subtitle{display:block!important;color:#5f6368!important;font:400 12px/16px "Google Sans Text",Roboto,Arial,sans-serif!important}
+.tgd-owned-detail-row [data-tgd-action]{cursor:pointer!important}
+
+/* Tooltip for our row controls, matched to Maps' own (measured from a recording): #303030, 24px
+   tall, 4px radius, white 13px text, no shadow, ~100ms fade-in, removed instantly. */
+.tgd-maps-tooltip{position:fixed!important;z-index:2147483646!important;box-sizing:border-box!important;height:24px!important;margin:0!important;padding:4px 8px!important;border-radius:4px!important;background:#303030!important;color:#fff!important;font:400 13px/16px "Google Sans Text","Google Sans",Roboto,Arial,sans-serif!important;letter-spacing:normal!important;white-space:nowrap!important;pointer-events:none!important}
+
+.tgd-maps-tooltip-fade{animation:tgd-maps-tooltip-in .1s ease-out both!important}
+@keyframes tgd-maps-tooltip-in{from{opacity:0}to{opacity:1}}
+
+/* Fallback trailing actions: only present if Maps' own trailing copy action could not be cloned. */
+.tgd-fallback-row{display:flex!important;align-items:center!important}
+.tgd-fallback-row:hover,.tgd-fallback-row:focus-within{background:rgba(60,64,67,.08)!important}
+.tgd-fallback-actions{display:flex!important;align-items:center!important;margin-left:auto!important;padding-right:8px!important;opacity:0!important;transition:opacity .12s ease!important}
+.tgd-fallback-row:hover .tgd-fallback-actions,.tgd-fallback-row:focus-within .tgd-fallback-actions{opacity:1!important}
+.tgd-fallback-action{display:grid!important;place-items:center!important;width:40px!important;height:40px!important;padding:0!important;border:0!important;border-radius:50%!important;background:transparent!important;color:#5f6368!important;cursor:pointer!important}
+.tgd-fallback-action:hover{background:rgba(60,64,67,.12)!important;color:#202124!important}
+.tgd-fallback-action svg{display:block!important;width:20px!important;height:20px!important}
+
+/* Bottom suggestion: centered beside Google's native Suggest an edit control. */
+.tgd-bottom-suggest-wrap{
+  display:block!important;flex:0 0 100%!important;width:100%!important;max-width:100%!important;
+  box-sizing:border-box!important;padding:8px 0 0!important;text-align:center!important;
+}
+/* Normal case: a clone of Google's own button, inside a clone of its own ancestor chain, so
+   Maps' classes (including its parent/child rules) supply the whole look. We only add the line
+   break that puts it on its own centered line, a little space above it, and the pointer cursor. */
+.tgd-bottom-suggest-break{flex:0 0 100%!important;width:100%!important;height:0!important;margin:0!important;padding:0!important;border:0!important}
+.tgd-bottom-suggest-block{margin-top:8px!important}
+.tgd-native-clone{cursor:pointer!important}
+.tgd-native-clone .tgd-greek-flag{display:block!important;flex:none!important;max-width:48px!important;max-height:48px!important}
+/* Fallback only (no Google button to clone): TGD-styled button. */
+.tgd-suggest.tgd-bottom-suggest{display:inline-flex!important;align-items:center!important;justify-content:center!important;gap:8px!important;margin:0 auto!important;vertical-align:middle!important}
+.tgd-suggest.tgd-bottom-suggest:before{content:none!important;display:none!important}
+.tgd-suggest.tgd-bottom-suggest .tgd-greek-flag{display:block!important;width:18px!important;height:12px!important;flex:none!important;border-radius:2px!important;box-shadow:0 0 0 .5px rgba(0,0,0,.2)!important}
+.tgd-suggest.tgd-bottom-suggest span{display:inline-block!important}

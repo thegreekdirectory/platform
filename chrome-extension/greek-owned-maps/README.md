@@ -1,23 +1,33 @@
-# The Greek Directory — Google Maps Extension
+# The Greek Directory — Google Maps & Yelp Extension
 
-Chrome Manifest V3 prototype, version 0.2.4.
+Chrome Manifest V3 extension, version 0.3.0.
 
 ## Install for local testing
 1. Open `chrome://extensions`.
 2. Enable **Developer mode**.
 3. Select **Load unpacked**.
 4. Choose this `greek-owned-maps` folder.
-5. Open Google Maps and navigate to a business.
+5. Open Google Maps or Yelp and navigate to a business.
 
 The Supabase project URL and public publishable key are configured in `config.js`. Only a public publishable key is included; no service-role key is stored in the extension.
 
 ## Features
+
+### Google Maps
 - Checks supported Google Place IDs against visible records in `public.listings`.
 - Adds a TGD Greek-owned badge to matching search result cards and supported business detail pages.
 - Provides a suggestion form with owner, family/friend, and knows-it-is-Greek-owned choices plus an optional note.
 - Suggestions enter a separate queue and require human review before any listing is added.
 - A random local installation UUID is used for request limiting.
 - Lookup cache is held in `chrome.storage.session` for up to three hours and clears when the browser session ends.
+
+### Yelp
+- Checks Yelp business slugs against public.listings.yelp_id for visible records.
+- Adds a Yelp-styled Greek-owned badge to matching search-result cards. Search cards never receive a suggestion button.
+- On Yelp business pages, retains the existing TGD-styled top badge and top suggestion button, and adds Yelp-styled lower detail-page controls.
+- The lower listed-business row links to the TGD listing and can copy its URL; unlisted businesses receive a clone of Yelp's native Suggest an edit button, relabeled for TGD.
+- Reuses the existing suggestion modal and review choices.
+- Uses its own three-hour session cache (y1: prefix), separate Yelp lookup and suggestion endpoints, and the same locally generated installation ID for rate limiting.
 
 ## Known Google Maps limitation
 Google Maps does not consistently expose Google Place IDs as explicit URL parameters. The extension now supports three paths: explicit `query_place_id` / `place_id` parameters, a direct `ChIJ...` token, and the Maps MID/CID pair format `0x...:0x...`. For the pair format, it uses the final pair in the URL and converts the two hexadecimal 64-bit values into the 21-byte protobuf payload used to construct the Place ID. The Base64 output is normalized to Base64URL (`+` → `-`, `/` → `_`) before the final trailing `A` is removed, matching the alphabet used by TGD's stored Google Place IDs. The extension intentionally does not return the raw CID pair as an ID.
@@ -52,10 +62,24 @@ Approving a suggestion marks it approved in the queue; it does not automatically
 ## Privacy
 - Runs only on the Google Maps URL patterns listed in `manifest.json`.
 - Does not send search terms, browsing history, account identity, name, email, or location.
-- Lookup requests send Place IDs only; lookup results are not stored server-side.
-- Suggestion submissions send the business name, Place ID, optional address, relationship choice, and optional note for review.
+- Google lookup requests send Place IDs only; Yelp lookup requests send Yelp business slugs only. Lookup results are not stored server-side.
+- Suggestion submissions send the business name, platform business ID, optional address, relationship choice, and optional note for review.
 - No analytics or advertising code is included.
 
+
+## Google Maps detail-page behavior
+
+The Google Maps integration remains unchanged by the Yelp addition.
+
+## Yelp detail-page behavior (v0.3.0)
+
+- Yelp IDs are read from the path segment immediately after /biz/, such as www.yelp.com/biz/eagle-restaurant-downers-grove. Query strings and tracking parameters are ignored.
+- Search-result cards are found through Yelp's serp-ia-card / OrganicBusinessResult structure and business-name link. Only matched businesses get a compact Yelp-styled Greek-owned · TGD badge; no suggest control is inserted in search results.
+- Business pages retain the existing TGD top badge and top suggestion styling.
+- The lower owned row is inserted in Yelp's business-information sidebar immediately before Yelp's native Suggest an edit control. It uses Yelp typography, spacing, neutral borders, and Yelp-red accents, with View listing and Copy link actions.
+- For unlisted businesses, the lower suggestion button clones Yelp's native Suggest an edit button, replaces its pencil icon with the Greek flag, and changes the label to Suggest to The Greek Directory. The original Yelp control remains intact.
+- The suggestion modal retains the same structure, copy, choices, and styling as the Google Maps modal.
+- The supplied Yelp business page exposes the directory slug in /biz/{slug}; the separate internal review/business identifier is not used.
 
 ## Google Maps detail-page behavior (v0.2.4)
 

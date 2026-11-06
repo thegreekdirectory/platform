@@ -42,6 +42,10 @@ The current implementation is a browser-heavy static site:
 - Static listing page generation from `listing-template.html` and GitHub Contents API writes.
 - CSV import helpers, sitemap updates, Cloudflare Images upload support, custom/system shortlink management, and listing analytics inspection.
 
+### Browser extension
+
+The Chrome Manifest V3 extension in chrome-extension/greek-owned-maps/ checks Google Maps Place IDs and Yelp business slugs against visible rows in public.listings. It displays Greek-owned badges for matching businesses and routes community suggestions into separate human-reviewed queues. Yelp search results are badge-only; Yelp business pages retain the top TGD controls and add Yelp-styled lower sidebar controls. The extension popup and suggestion modal are shared across both platforms. See the extension README and YELP.md for platform-specific behavior and backend details.
+
 ### PWA/offline support
 
 - Web app manifest for the public app and a separate business portal manifest.
@@ -110,6 +114,7 @@ flowchart TD
 ├── assets/images/logo/            # Logo/favicon source assets
 ├── partials/                      # Header/footer partials loaded client-side
 ├── widgets/                       # Embeddable widgets
+├── chrome-extension/greek-owned-maps/ # Chrome extension for Google Maps and Yelp
 ├── cloudflare/                    # Cloudflare Worker source for image uploads
 ├── functions/                     # Cloudflare Pages middleware for gated branch access
 ├── supabase/edge-functions/       # Source mirrors/reference copies for deployed Edge Functions

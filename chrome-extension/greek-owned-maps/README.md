@@ -1,6 +1,6 @@
 # The Greek Directory — Google Maps Extension
 
-Chrome Manifest V3 prototype, version 0.2.2.
+Chrome Manifest V3 prototype, version 0.2.4.
 
 ## Install for local testing
 1. Open `chrome://extensions`.
@@ -57,13 +57,13 @@ Approving a suggestion marks it approved in the queue; it does not automatically
 - No analytics or advertising code is included.
 
 
-## Google Maps detail-page behavior (v0.2.2)
+## Google Maps detail-page behavior (v0.2.4)
 
 ### Lower Greek-owned row (listed businesses)
 - The row is a deep clone of Google's own Plus Code row, inserted directly beneath it. Google's CSS therefore supplies the layout, hover background and the hover-revealed trailing actions; the extension does not draw its own row chrome. Google's `jsaction`, `id`, `data-*` and `aria-labelledby` attributes are stripped from the clone so Maps' delegated handlers never act on it.
 - Only the icon (Greek flag), text (`Greek-owned` / `Listed in The Greek Directory`), trailing action targets and click behavior are ours. Icon size is taken from Google's original icon.
 - Hovering shows exactly two trailing actions, in the same order as Maps' website row: **Open listing** (opens the TGD listing in a new tab) and **Copy TGD link**. Google's own trailing copy button and icon are reused; the open glyph is added by cloning that button. Every other control cloned from the Plus Code row (for example its info button) is removed, along with any wrapper left empty.
-- Tooltips come from Maps itself: the clone keeps the original controls' `data-tooltip` and hover/focus `jsaction` hooks (never a click action) with our text, so Maps renders its own tooltip: `Copy TGD link` on the row and the copy button, `Open listing` on the open button. No native `title` is added in that case; if the hooks are not found on Google's original, a native `title` tooltip is used instead.
+- Tooltips: Maps' own tooltip code does not fire on a cloned node, so the extension draws one that matches Maps' in look and behaviour (both measured from screenshots and a screen recording of Maps). Look: `#303030` box, 24 px tall, 4 px radius, white 13 px text, no shadow, ~100 ms ease-out fade-in. Behaviour: it appears the moment the pointer enters a control, disappears at once on leaving or clicking, does not follow the pointer (it stays put while the pointer moves inside the control), and moving to another control swaps it in place with no gap. Position: on the row it sits just under the row, 11 px in from its left edge (like Maps' `Copy phone number`); on the icon buttons it is centred 2 px under the icon (like `Copy plus code` / `Open website`). Text: `Copy TGD link` on the row and the copy button, `Open listing` on the open button. It also shows on keyboard focus, stays inside the window, and is removed together with the row. No native `title` or Maps hook is added, so tooltips never double up.
 - Clicking the row (or Enter/Space), or **Copy TGD link**, copies `https://thegreekdirectory.org/listing/{slug}` through Google's own copy control, so Maps shows its native "Copied to clipboard" snackbar. The extension never draws a toast of its own.
 
 ### How the copy reaches Google's snackbar
@@ -77,4 +77,4 @@ Fallbacks, so a click never silently does nothing: if the bridge does not answer
 - Neither button is shown for a business already listed as Greek-owned.
 
 ### Verification status
-The extension scripts and stylesheet were executed in headless Chromium against a mock Maps panel that imitates the DOM shape the project's earlier code relied on (`RcCsl` rows, `data-item-id`, trailing copy buttons, delegated handlers, black snackbar). That confirms the logic, the clipboard hand-off and the CSS cascade, but it is **not** live Google Maps. Check hover, the tooltips, the snackbar and the bottom buttons in Chrome on real place pages after loading the unpacked extension. The tooltip hooks and the bottom button's ancestor chain depend on Maps' live markup; if either looks wrong, the `outerHTML` of the Plus Code row and of the Suggest an edit button (from DevTools) shows exactly what to match.
+The extension scripts and stylesheet were executed in headless Chromium against a mock Maps panel that imitates the DOM shape the project's earlier code relied on (`RcCsl` rows, `data-item-id`, trailing copy buttons, delegated handlers, black snackbar). That confirms the logic, the clipboard hand-off and the CSS cascade, but it is **not** live Google Maps. Check hover, the tooltips, the snackbar and the bottom buttons in Chrome on real place pages after loading the unpacked extension. The bottom button's ancestor chain depends on Maps' live markup, and the tooltip look and behaviour were matched from screenshots and a recording (the mock cannot load Google Sans); if either looks off, the `outerHTML` of the Plus Code row and of the Suggest an edit button (from DevTools) shows exactly what to match.

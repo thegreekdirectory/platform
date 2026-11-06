@@ -137,6 +137,7 @@
     document.querySelectorAll(".tgd-top-badge").forEach(badge=>badge.remove());
   }
   function removeGreekOwnedDetailRow() {
+    hideTgdTooltip();
     document.querySelectorAll(".tgd-owned-detail-row").forEach(row=>row.remove());
   }
 
@@ -195,34 +196,76 @@
     }
   }
 
-  // Maps draws its black tooltips from data-tooltip through hover/focus jsaction hooks.
-  // Scrubbing removes them, so remember them first and give our controls the hover/focus
-  // hooks only (never a click action), letting Maps itself render the tooltip.
-  const TOOLTIP_EVENTS=new Set(["mouseover","mouseout","mouseenter","mouseleave","focus","blur","focusin","focusout"]);
-  function tooltipJsaction(value) {
-    return String(value||"").split(";").map(part=>part.trim()).filter(part=>{
-      const colon=part.indexOf(":");
-      return colon>0 && TOOLTIP_EVENTS.has(part.slice(0,colon).trim());
-    }).join(";");
+  // Maps' own tooltip code does not fire on a cloned node, so our controls get a tooltip drawn
+  // to match Maps' (look and behaviour both measured from a screen recording of Maps):
+  //  - #303030 box, 24px tall, 4px radius, white 13px text, ~100ms ease-out fade-in;
+  //  - appears the moment the pointer enters a control, goes away at once on leaving;
+  //  - does not follow the pointer: it stays put while the pointer moves inside the control;
+  //  - moving to another control swaps the tooltip in place, with no gap;
+  //  - a row's tooltip sits just under the row, 11px in from its left edge; an icon button's is
+  //    centred just under the icon;
+  //  - also shown on keyboard focus.
+  const TGD_TOOLTIP_ROW_INSET=11;
+  const TGD_TOOLTIP_SWAP_GRACE=60;
+  let tooltipEl=null;
+  let tooltipHideTimer=0;
+  let tooltipGlobalHooked=false;
+
+  function hideTgdTooltip() {
+    clearTimeout(tooltipHideTimer);
+    tooltipEl?.remove();
+    tooltipEl=null;
   }
-  function snapshotTooltips(root) {
-    const snapshot=new Map();
-    for(const el of [root,...root.querySelectorAll("*")]) {
-      if(!el.hasAttribute("data-tooltip")) continue;
-      snapshot.set(el,{jsaction:tooltipJsaction(el.getAttribute("jsaction")),hide:el.getAttribute("data-hide-tooltip-on-mouse-move")});
-    }
-    return snapshot;
+
+  // Leaving a control hides the tooltip, but mouseenter on the next control fires right after
+  // mouseleave: a very short grace lets that control reuse the same tooltip (no flicker, no
+  // second fade-in). With nowhere to go it is removed within a frame or two.
+  function releaseTgdTooltip() {
+    clearTimeout(tooltipHideTimer);
+    tooltipHideTimer=setTimeout(hideTgdTooltip,TGD_TOOLTIP_SWAP_GRACE);
   }
-  function applyMapsTooltip(el, info, text) {
-    el.setAttribute("data-tooltip",text);
-    if(info?.jsaction) {
-      el.setAttribute("jsaction",info.jsaction);
-      el.removeAttribute("title");
-    } else {
-      // Maps' tooltip hooks were not found on the original: fall back to a native tooltip.
-      el.setAttribute("title",text);
+
+  function showTgdTooltip(target, text, kind) {
+    clearTimeout(tooltipHideTimer);
+    if(!target.isConnected) { hideTgdTooltip(); return; }
+    let tip=tooltipEl;
+    if(!tip) {
+      tip=document.createElement("div");
+      tip.className="tgd-maps-tooltip tgd-maps-tooltip-fade";
+      tip.setAttribute("role","tooltip");
+      document.body.appendChild(tip);
+      tooltipEl=tip;
     }
-    if(info?.hide!=null) el.setAttribute("data-hide-tooltip-on-mouse-move",info.hide);
+    tip.textContent=text;
+    const rect=target.getBoundingClientRect();
+    const width=tip.offsetWidth, height=tip.offsetHeight;
+    const viewportWidth=document.documentElement.clientWidth, viewportHeight=document.documentElement.clientHeight;
+    const wanted=kind==="row" ? rect.left+TGD_TOOLTIP_ROW_INSET : rect.left+rect.width/2-width/2;
+    const left=Math.max(8,Math.min(wanted,viewportWidth-width-8));
+    const below=rect.bottom+(kind==="row" ? 1 : 2);
+    const top=(below+height>viewportHeight-4 && rect.top-height-2>=4) ? rect.top-height-2 : below;
+    tip.style.left=Math.round(left)+"px";
+    tip.style.top=Math.round(top)+"px";
+  }
+
+  // kind: "row" for a wide row control, "icon" for a small icon button.
+  function attachTgdTooltip(el, text, kind) {
+    el.setAttribute("data-tgd-tooltip",text);
+    el.removeAttribute("title");
+    if(!tooltipGlobalHooked) {
+      tooltipGlobalHooked=true;
+      window.addEventListener("scroll",hideTgdTooltip,true);
+      window.addEventListener("blur",hideTgdTooltip);
+    }
+    el.addEventListener("mouseenter",()=>showTgdTooltip(el,text,kind));
+    el.addEventListener("mouseleave",releaseTgdTooltip);
+    el.addEventListener("blur",releaseTgdTooltip);
+    for(const type of ["mousedown","click"]) el.addEventListener(type,hideTgdTooltip);
+    el.addEventListener("focus",()=>{
+      let focusVisible=true;
+      try { focusVisible=el.matches(":focus-visible"); } catch {}
+      if(focusVisible) showTgdTooltip(el,text,kind);
+    });
   }
 
   // Swap the glyph inside a cloned Maps control for our own SVG while keeping the
@@ -396,7 +439,7 @@
       button.className="tgd-fallback-action";
       button.dataset.tgdAction=kind;
       button.setAttribute("aria-label",label);
-      button.title=label;
+      attachTgdTooltip(button,label,"icon");
       button.appendChild(svgFromMarkup(markup));
       actions.appendChild(button);
     }
@@ -426,7 +469,6 @@
     if(!bodyControl) return;
     // Find the trailing copy action before scrubbing removes the labels that identify it.
     const copyAction=findTrailingCopyAction(row,bodyControl);
-    const tooltips=snapshotTooltips(row);
     scrubClonedNode(row);
 
     row.classList.add("tgd-owned-detail-row");
@@ -473,12 +515,12 @@
         const sourceCopy=findTrailingCopyAction(plusCodeRow,plusCodeControl);
         copyAction.dataset.tgdAction="copy";
         copyAction.setAttribute("aria-label","Copy TGD link");
-        applyMapsTooltip(copyAction,tooltips.get(copyAction),"Copy TGD link");
+        attachTgdTooltip(copyAction,"Copy TGD link","icon");
         const openAction=copyAction.cloneNode(true);
         placeIcon(openAction,svgFromMarkup(OPEN_LISTING_SVG),sourceCopy?.querySelector(ICON_SELECTOR));
         openAction.dataset.tgdAction="open";
         openAction.setAttribute("aria-label","Open listing");
-        applyMapsTooltip(openAction,tooltips.get(copyAction),"Open listing");
+        attachTgdTooltip(openAction,"Open listing","icon");
         for(const action of [openAction,copyAction]) if(action.localName==="button") action.type="button";
         copyAction.insertAdjacentElement("beforebegin",openAction);
         pruneOtherControls(row,[bodyControl,openAction,copyAction]);
@@ -486,10 +528,8 @@
         console.warn("[TGD Maps] Maps' trailing copy action was not found; using fallback row actions.");
         pruneOtherControls(row,[bodyControl,appendFallbackActions(row)]);
       }
-      // The row itself (and anything else that carried a Maps tooltip) now reads "Copy TGD link".
-      for(const [el,info] of tooltips) {
-        if(row.contains(el) && el!==copyAction && !copyAction?.contains(el)) applyMapsTooltip(el,info,"Copy TGD link");
-      }
+      // The row itself reads "Copy TGD link", like Maps' own "Copy phone number" on its rows.
+      attachTgdTooltip(bodyControl,"Copy TGD link","row");
       if(bodyControl.localName!=="button") {
         // A non-<button> main control has no native Enter/Space activation.
         bodyControl.addEventListener("keydown",event=>{

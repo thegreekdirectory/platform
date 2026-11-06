@@ -1,8 +1,8 @@
 {
   "manifest_version": 3,
-  "name": "The Greek Directory — Google Maps",
-  "version": "0.2.4",
-  "description": "Check Google Maps businesses against The Greek Directory and suggest businesses for review.",
+  "name": "The Greek Directory — Google Maps & Yelp",
+  "version": "0.3.0",
+  "description": "Check Google Maps and Yelp businesses against The Greek Directory and suggest businesses for review.",
   "permissions": [
     "storage"
   ],
@@ -34,6 +34,20 @@
       ],
       "run_at": "document_start",
       "world": "MAIN"
+    },
+    {
+      "matches": [
+        "https://www.yelp.com/*",
+        "https://yelp.com/*"
+      ],
+      "js": [
+        "config.js",
+        "yelp-content.js"
+      ],
+      "run_at": "document_idle",
+      "css": [
+        "yelp.css"
+      ]
     }
   ],
   "background": {

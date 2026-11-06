@@ -127,7 +127,7 @@ function isYelpUrl(url) {
 
 chrome.runtime.onMessage.addListener((msg, sender, reply) => {
   if (msg.type === "STATUS") {
-    chrome.storage.local.get("submitted").then((data) => reply(data));
+    chrome.storage.local.get(["submitted", "submittedYelp"]).then((data) => reply(data));
     return true;
   }
 

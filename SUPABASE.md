@@ -2,7 +2,7 @@
 ## Project: The Greek Directory (`luetekzqrrgdxtopzvqw`)
 
 **Generated:** 2026-05-27
-**Last Updated:** 2026-05-31 (migration `fix_rls_user_metadata_references` — resolved 4 CRITICAL security advisors)
+**Last Updated:** 2026-11-06 (Yelp browser-extension backend added; earlier audit sections retain their original snapshot dates)
 **Database Host:** `db.luetekzqrrgdxtopzvqw.supabase.co`
 **API URL:** `https://luetekzqrrgdxtopzvqw.supabase.co`
 **Region:** `us-west-2`
@@ -42,6 +42,7 @@
 16. [Security Advisors](#16-security-advisors)
 17. [Performance Advisors](#17-performance-advisors)
 18. [Architecture Notes & Patterns](#18-architecture-notes--patterns)
+19. [Yelp Extension Integration](#19-yelp-extension-integration)
 
 ---
 
@@ -2441,4 +2442,88 @@ These should be updated to use `uuid` to match the current schema.
 
 ---
 
-*End of Audit Report — thegreekdirectory's Project (`luetekzqrrgdxtopzvqw`) — Last Updated 2026-05-31*
+## 19. Yelp Extension Integration
+
+**Added:** 2026-11-06  
+**Chrome extension version:** 0.3.0  
+**Repository path:** `chrome-extension/greek-owned-maps/`  
+**Repository branch:** `feature/google-maps-greek-owned-extension`
+
+### 19.1 Existing listing identifier
+
+The Yelp integration uses the existing nullable text column `public.listings.yelp_id`. Its value is the business slug immediately after `/biz/` in the public Yelp business-page URL (for example, `eagle-restaurant-downers-grove`). It is not the separate internal identifier that appears in Yelp's review-writing URL.
+
+Only `visible = true` listings are returned by the lookup function. The database index is:
+
+```sql
+listings_visible_yelp_id_idx
+  ON public.listings (yelp_id)
+  WHERE visible IS TRUE
+    AND yelp_id IS NOT NULL
+    AND btrim(yelp_id) <> ''
+```
+
+**Live counts checked 2026-11-06:** 155 listings total; 78 with a non-empty Yelp ID; 77 visible listings with a non-empty Yelp ID; 78 distinct non-empty Yelp IDs.
+
+### 19.2 Suggestion queue
+
+`public.greek_owned_yelp_extension_suggestions` stores Yelp suggestions separately from the Google Maps queue.
+
+| Column | Purpose |
+|---|---|
+| `id` | UUID primary key |
+| `created_at` | Submission timestamp |
+| `status` | `pending`, `approved`, or `denied` |
+| `yelp_id` | Yelp business slug |
+| `business_name` | Business name |
+| `address` | Optional address |
+| `yelp_url` | Yelp business-page URL |
+| `relationship` | `owner`, `family_friend`, or `knows` |
+| `note` | Optional supporting information |
+| `reviewed_at` | Review timestamp |
+| `review_notes` | Admin notes, up to 2,000 characters |
+
+RLS is enabled. All direct access is revoked from `public`, `anon`, and `authenticated`; the deployed Edge Functions use the service role. There are no public RLS policies on this queue. A partial unique index prevents more than one pending suggestion for the same Yelp ID.
+
+**Live status checked 2026-11-06:** zero suggestion rows at the time of inspection.
+
+### 19.3 Deployed Edge Functions
+
+| Function | Version | JWT verification | Purpose |
+|---|---:|---|---|
+| `greek-owned-yelp-lookup` | 1 | Disabled | Matches batches of up to 30 Yelp slugs against visible listings and returns TGD slugs |
+| `greek-owned-yelp-suggest` | 1 | Disabled | Validates submissions, checks for existing listings, applies per-installation limits, and inserts pending suggestions |
+| `greek-owned-yelp-admin` | 1 | Disabled | Lists and reviews suggestions using a GitHub token with repository write access |
+
+The three functions are deployed and active. Their source mirrors are under `supabase/functions/greek-owned-yelp-*/index.ts`.
+
+The lookup endpoint allows 90 requests per installation per minute. Suggestion submissions allow five per installation per hour. Yelp suggestions use a deterministic installation UUID scoped with `:yelp-suggestions`, so the Yelp suggestion quota is separate from the Google Maps suggestion quota. Both integrations use the existing `public.consume_greek_owned_extension_quota(uuid, integer, integer)` function and `public.greek_owned_extension_rate_limits` storage.
+
+The admin endpoint supports:
+- `{"action":"list"}` — returns up to 250 pending Yelp suggestions.
+- `{"action":"review","id":"...","status":"approved|denied","reviewNotes":"..."}` — records the review decision and optional notes.
+
+Admin requests require an `x-github-token` for a GitHub account with push or admin permission on `thegreekdirectory/platform`. Approval changes only the queue status; it does not automatically create a public directory listing.
+
+### 19.4 Extension behavior
+
+- Yelp business IDs are extracted from the path after `/biz/`; query strings are ignored.
+- Yelp search cards receive only a compact Greek-owned badge when the ID matches a visible TGD listing. No suggestion button is added to search results.
+- Yelp business pages retain the existing TGD-styled top badge and top suggestion button.
+- Listed Yelp businesses receive a separate lower row in the business-information sidebar, styled with Yelp typography, neutral borders, and Yelp-red accents. It includes View listing and Copy link actions.
+- Unlisted businesses receive a clone of Yelp's lower native `Suggest an edit` button with the Greek flag and the label `Suggest to The Greek Directory`. Yelp's original button remains intact.
+- The same TGD suggestion modal, relationship options, and optional note are used for Google Maps and Yelp.
+- Yelp lookup results use a separate three-hour `chrome.storage.session` cache namespace (`y1:`); Google Maps cache behavior is separate.
+
+### 19.5 Migration and source references
+
+- Applied Supabase migration: `20261106172751_add_yelp_extension`
+- Repository migration mirror: `supabase/migrations/20261106172751_add_yelp_extension.sql`
+- Extension implementation notes: `chrome-extension/greek-owned-maps/YELP.md`
+- Extension source: `chrome-extension/greek-owned-maps/yelp-content.js`, `yelp.css`, and the shared `background.js` / `manifest.json`.
+
+**Verification boundary:** The database schema, index, RLS state, deployed Edge Function status/source, and repository files were checked. The provided Yelp HTML snapshots were used to verify the intended selectors. A live Chrome test against Yelp's changing DOM has not been performed.
+
+---
+
+*End of Audit Report — thegreekdirectory's Project (`luetekzqrrgdxtopzvqw`) — Updated 2026-11-06; Yelp extension section appended. Earlier audit sections retain their original snapshot dates.*

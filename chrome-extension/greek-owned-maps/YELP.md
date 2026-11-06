@@ -35,6 +35,7 @@ This document describes the Yelp integration added to the Google Maps extension 
 - public.listings.yelp_id: existing listing identifier.
 - public.greek_owned_yelp_extension_suggestions: separate suggestion/review queue with RLS enabled and direct privileges revoked from public/anon/authenticated.
 - public.listings_visible_yelp_id_idx: partial lookup index for visible listings.
+- Applied migration and repository mirror: supabase/migrations/20261106172751_add_yelp_extension.sql.
 - greek-owned-yelp-lookup: returns visible Yelp matches and TGD slugs.
 - greek-owned-yelp-suggest: checks existing listings, enforces suggestion limits, and inserts a pending submission.
 - greek-owned-yelp-admin: lists and reviews the Yelp queue using a GitHub PAT with write access to thegreekdirectory/platform.
